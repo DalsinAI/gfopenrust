@@ -1,6 +1,6 @@
 # Plan
 
-The single plan for OpenAmigaRust. Each PR that finishes a step updates it.
+The single plan for GFOpenAmigaRust. Each PR that finishes a step updates it.
 
 | Step | What | Status |
 | --- | --- | --- |
