@@ -30,6 +30,6 @@ float and the large code model.
 
 ## Licence
 
-MIT (see `LICENSE`). Copyright (c) 2026 AmigaChrome Team.
+MIT (see `LICENSE`). Copyright (c) 2026 AmiCradle Team.
 
-Designed, tested and delivered by The AmigaChrome Team.
+Designed, tested and delivered by The AmiCradle Team.
