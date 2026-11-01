@@ -1,4 +1,4 @@
-# OpenAmigaRust
+# GFOpenAmigaRust
 
 Rust for the Amiga: programs written in Rust that run on AmigaOS 3.x on a
 68040.
