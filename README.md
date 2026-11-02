@@ -8,11 +8,11 @@ Rust for the Amiga: programs written in Rust that run on AmigaOS 3.x on a
 - **The compiler works.** Stock Rust 1.97 builds 68k code that prints wrong
   numbers, hangs, and crashes the compiler. LLVM's M68k backend had six
   bugs, which are now fixed. The `rust-m68k` stove in
-  [amigachrome-stoves](https://github.com/DalsinAI/amigachrome-stoves/tree/main/rust-m68k)
+  [amicradle-stoves](https://github.com/DalsinAI/amicradle-stoves/tree/main/rust-m68k)
   builds Rust 1.97.0 on the fixed LLVM. Its output matches a PC's at every
   optimisation level.
 - **Programs load through elf.library.** Rust builds a 68k ELF, and
-  [elf.library](https://github.com/DalsinAI/amigachrome-guest/tree/main/libraries/openelf)
+  [elf.library](https://github.com/DalsinAI/amicradle-guest/tree/main/libraries/openelf)
   loads it from the Shell. elf.library's `rust/hello` (`core` and `alloc` on an
   exec memory pool) has not been run on an Amiga yet; its fixture runs under
   qemu in elf.library's tests.
@@ -25,7 +25,7 @@ Install the stove (see its README), then build with its Cargo settings: soft
 float and the large code model.
 
     RUSTC_BOOTSTRAP=1 cargo +rust-m68k build --release --target m68k-unknown-none-elf \
-        --config /path/to/amigachrome-stoves/rust-m68k/cargo-config.toml \
+        --config /path/to/amicradle-stoves/rust-m68k/cargo-config.toml \
         -Zbuild-std=core,alloc,compiler_builtins -Zbuild-std-features=compiler-builtins-mem
 
 ## Licence
