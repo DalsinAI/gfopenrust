@@ -23,6 +23,9 @@ for symbol in \
     gf_lib_call0 \
     gf_lib_call_d0_d1_a0_a1 \
     gf_lib_call_d0_d1_d2 \
+    gf_lib_call_a0 \
+    gf_lib_call_a0_d0 \
+    gf_lib_call_a0_a1_d0 \
     gf_dos_call_d1_d2_d3 \
     gf_dos_call_d1_d2_d3_d4
 do
@@ -35,11 +38,12 @@ grep -Eq 'jsr[[:space:]]+%fp@' "$tmp/disassembly.txt"
 grep -Eq 'moveml[[:space:]]+%d2-%d4/%fp' "$tmp/disassembly.txt"
 
 if [ "${RUN_M68K_RUST:-0}" = 1 ]; then
-    RUSTC_BOOTSTRAP=1 \
+    CARGO_TARGET_DIR="$tmp/rust-target" RUSTC_BOOTSTRAP=1 \
     RUSTFLAGS='-C target-cpu=M68040 -C target-feature=-isa-68881,-isa-68882 -C code-model=large' \
         cargo build --release --target m68k-unknown-none-elf \
         -Zbuild-std=core,compiler_builtins \
-        -Zbuild-std-features=compiler-builtins-mem
+        -Zbuild-std-features=compiler-builtins-mem \
+        -p amiga-sys
 fi
 
 echo "amiga-sys verification passed"

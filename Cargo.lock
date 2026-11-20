@@ -3,6 +3,13 @@
 version = 4
 
 [[package]]
+name = "amiga-gfopensynth"
+version = "0.1.0"
+dependencies = [
+ "amiga-runtime",
+]
+
+[[package]]
 name = "amiga-hello"
 version = "0.1.0"
 dependencies = [
@@ -14,6 +21,14 @@ name = "amiga-runtime"
 version = "0.1.0"
 dependencies = [
  "amiga-sys",
+]
+
+[[package]]
+name = "amiga-synth-smoke"
+version = "0.1.0"
+dependencies = [
+ "amiga-gfopensynth",
+ "amiga-runtime",
 ]
 
 [[package]]

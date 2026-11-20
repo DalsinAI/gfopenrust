@@ -1,6 +1,12 @@
 [workspace]
 resolver = "2"
-members = ["crates/amiga-runtime", "crates/amiga-sys", "examples/amiga-hello"]
+members = [
+    "crates/amiga-gfopensynth",
+    "crates/amiga-runtime",
+    "crates/amiga-sys",
+    "examples/amiga-hello",
+    "examples/amiga-synth-smoke",
+]
 
 [profile.release]
 panic = "abort"

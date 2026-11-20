@@ -19,7 +19,11 @@ use core::alloc::GlobalAlloc;
 #[cfg(any(target_arch = "m68k", test))]
 use core::alloc::Layout;
 #[cfg(target_arch = "m68k")]
+use core::ffi::c_void;
+#[cfg(target_arch = "m68k")]
 use core::ffi::CStr;
+#[cfg(target_arch = "m68k")]
+use core::marker::PhantomData;
 
 #[cfg(any(target_arch = "m68k", test))]
 const BASE_ALIGNMENT: usize = 8;
@@ -132,6 +136,64 @@ impl Runtime {
     /// Write one NUL-terminated string through dos.library.
     pub fn put_str(&self, string: &CStr) -> i32 {
         unsafe { put_str(string.as_ptr().cast()) }
+    }
+
+    /// Open an Amiga shared library for no longer than this runtime callback.
+    pub fn open_library<'runtime>(
+        &'runtime self,
+        name: &CStr,
+        minimum_version: u32,
+    ) -> Option<OpenLibrary<'runtime>> {
+        let sys = unsafe { LibraryBase::from_raw(SYS_BASE) }?;
+        let base = unsafe { exec::open_library(sys, name.as_ptr().cast(), minimum_version) }?;
+        Some(OpenLibrary {
+            sys,
+            base,
+            _runtime: PhantomData,
+        })
+    }
+}
+
+/// An open Amiga library tied to the runtime that owns Exec.
+///
+/// Typed binding crates use the unsafe register calls below, keeping raw
+/// vectors and pointers out of application code.  Dropping the handle closes
+/// the library before [`run`] tears the runtime down.
+#[cfg(target_arch = "m68k")]
+pub struct OpenLibrary<'runtime> {
+    sys: LibraryBase,
+    base: LibraryBase,
+    _runtime: PhantomData<&'runtime Runtime>,
+}
+
+#[cfg(target_arch = "m68k")]
+impl OpenLibrary<'_> {
+    /// # Safety
+    /// `lvo` must have the `a0` signature and `a0` must meet the vector's
+    /// pointer contract.
+    pub unsafe fn call_a0(&self, lvo: i32, a0: *mut c_void) -> u32 {
+        amiga_sys::library::call_a0(self.base, lvo, a0)
+    }
+
+    /// # Safety
+    /// `lvo` must have the `a0,d0` signature and every argument must meet the
+    /// vector's contract.
+    pub unsafe fn call_a0_d0(&self, lvo: i32, a0: *mut c_void, d0: u32) -> u32 {
+        amiga_sys::library::call_a0_d0(self.base, lvo, a0, d0)
+    }
+
+    /// # Safety
+    /// `lvo` must have the `a0,a1,d0` signature and every argument must meet
+    /// the vector's contract.
+    pub unsafe fn call_a0_a1_d0(&self, lvo: i32, a0: *mut c_void, a1: *mut c_void, d0: u32) -> u32 {
+        amiga_sys::library::call_a0_a1_d0(self.base, lvo, a0, a1, d0)
+    }
+}
+
+#[cfg(target_arch = "m68k")]
+impl Drop for OpenLibrary<'_> {
+    fn drop(&mut self) {
+        unsafe { exec::close_library(self.sys, self.base) };
     }
 }
 

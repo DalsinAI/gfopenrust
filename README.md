@@ -20,6 +20,9 @@ Rust for the Amiga: programs written in Rust that run on AmigaOS 3.x on a
   DOS interfaces, including assembly trampolines for Amiga's register-based
   library calls. `targets/m68k-amigaos.json` and `crates/amiga-runtime` now
   produce a linked AmigaDOS-entry ELF with an Exec-pool global allocator.
+  `crates/amiga-gfopensynth` adds the first safe typed shared-library binding:
+  short MIDI messages, SysEx and reset through `gfopensynth.library` version
+  1, with the library and synth lifetimes tied to the runtime callback.
   Native validation and `std` remain. See [docs/PLAN.md](docs/PLAN.md),
   [docs/AMIGA-SYS.md](docs/AMIGA-SYS.md) and
   [docs/AMIGA-RUNTIME.md](docs/AMIGA-RUNTIME.md).
