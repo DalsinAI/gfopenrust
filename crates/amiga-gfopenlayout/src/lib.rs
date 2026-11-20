@@ -65,7 +65,9 @@ const WINDOW_FLAGS: u32 = WFLG_SIZEGADGET
 const WINDOW_USER_PORT_OFFSET: usize = 86;
 const MSG_PORT_SIGNAL_BIT_OFFSET: usize = 15;
 const OLUI_AMIGA_CLOSE: u32 = 2;
+const OLUI_ANY_EVENT: i32 = 0;
 const OLUI_CLICK: i32 = 1;
+const OLUI_CHANGE: i32 = 2;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -95,16 +97,24 @@ struct RawEvent {
 /// A bounded GFOpenLayout event borrowed for the duration of its callback.
 #[cfg(target_arch = "m68k")]
 pub struct Event<'event> {
+    pub kind: EventKind,
     pub id: &'event CStr,
     pub value: Option<&'event CStr>,
     pub index: i32,
     pub checked: bool,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum EventKind {
+    Click,
+    Change,
+    Other(i32),
+}
+
 /// Receives UI events without exposing the C callback ABI to applications.
 #[cfg(target_arch = "m68k")]
 pub trait EventSink {
-    fn on_click(&mut self, event: Event<'_>);
+    fn on_event(&mut self, event: Event<'_>);
 
     /// Apply any state changes after GFOpenLayout has finished dispatching.
     fn refresh(&mut self, _ui: &mut Ui<'_, '_>) {}
@@ -203,7 +213,7 @@ impl Ui<'_, '_> {
 }
 
 #[cfg(target_arch = "m68k")]
-unsafe extern "C" fn click_trampoline<S: EventSink>(
+unsafe extern "C" fn event_trampoline<S: EventSink>(
     _ui: *mut c_void,
     event: *const RawEvent,
     userdata: *mut c_void,
@@ -213,7 +223,7 @@ unsafe extern "C" fn click_trampoline<S: EventSink>(
     }) else {
         return;
     };
-    if raw.event_type != OLUI_CLICK || raw.id.is_null() {
+    if raw.id.is_null() {
         return;
     }
     let id = unsafe { CStr::from_ptr(raw.id) };
@@ -222,7 +232,13 @@ unsafe extern "C" fn click_trampoline<S: EventSink>(
     } else {
         Some(unsafe { CStr::from_ptr(raw.value) })
     };
-    sink.on_click(Event {
+    let kind = match raw.event_type {
+        OLUI_CLICK => EventKind::Click,
+        OLUI_CHANGE => EventKind::Change,
+        other => EventKind::Other(other),
+    };
+    sink.on_event(Event {
+        kind,
         id,
         value,
         index: raw.index,
@@ -435,9 +451,9 @@ impl<'runtime> Window<'runtime> {
                 LVO_OLUI_ON,
                 self.ui.as_ptr(),
                 core::ptr::null_mut(),
-                click_trampoline::<S> as *const () as *mut c_void,
+                event_trampoline::<S> as *const () as *mut c_void,
                 sink as *mut S as *mut c_void,
-                OLUI_CLICK as u32,
+                OLUI_ANY_EVENT as u32,
             )
         };
         if registered == 0 {
