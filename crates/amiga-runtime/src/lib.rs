@@ -49,6 +49,58 @@ static mut DOS_BASE: APtr = core::ptr::null_mut();
 #[cfg(target_arch = "m68k")]
 static mut POOL: APtr = core::ptr::null_mut();
 
+#[cfg(any(target_arch = "m68k", test))]
+unsafe fn copy_bytes(destination: *mut u8, source: *const u8, length: usize) {
+    for offset in 0..length {
+        unsafe {
+            destination
+                .add(offset)
+                .write_volatile(source.add(offset).read_volatile());
+        }
+    }
+}
+
+#[cfg(any(target_arch = "m68k", test))]
+unsafe fn fill_bytes(destination: *mut u8, value: u8, length: usize) {
+    for offset in 0..length {
+        unsafe { destination.add(offset).write_volatile(value) };
+    }
+}
+
+/// Compiler memory-copy ABI used by freestanding native applications.
+///
+/// Keeping this in the shared runtime prevents every application from
+/// exporting its own copy and avoids compiler-builtins relocations which the
+/// Amiga Hunk linker cannot represent.
+///
+/// # Safety
+/// The two ranges must be valid for `length` bytes and must not overlap.
+#[cfg(target_arch = "m68k")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn memcpy(
+    destination: *mut c_void,
+    source: *const c_void,
+    length: usize,
+) -> *mut c_void {
+    unsafe { copy_bytes(destination.cast(), source.cast(), length) };
+    destination
+}
+
+/// Compiler byte-fill ABI used by freestanding native applications.
+///
+/// # Safety
+/// `destination` must be valid for `length` writable bytes.
+#[cfg(target_arch = "m68k")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn memset(
+    destination: *mut c_void,
+    value: i32,
+    length: usize,
+) -> *mut c_void {
+    unsafe { fill_bytes(destination.cast(), value as u8, length) };
+    destination
+}
+
 /// Initialise the program's DOS base and allocation pool.
 ///
 /// # Safety
@@ -293,5 +345,20 @@ mod tests {
     fn aligned_allocations_reserve_a_back_pointer() {
         let layout = Layout::from_size_align(17, 64).unwrap();
         assert_eq!(allocation_size(layout), Some((17 + 64 + HEADER_SIZE, true)));
+    }
+
+    #[test]
+    fn compiler_memory_copy_handles_non_word_lengths() {
+        let source = [0x10, 0x20, 0x30, 0x40, 0x50];
+        let mut destination = [0u8; 5];
+        unsafe { copy_bytes(destination.as_mut_ptr(), source.as_ptr(), source.len()) };
+        assert_eq!(destination, source);
+    }
+
+    #[test]
+    fn compiler_memory_fill_keeps_the_low_byte() {
+        let mut destination = [0u8; 7];
+        unsafe { fill_bytes(destination.as_mut_ptr(), 0xa5, destination.len()) };
+        assert_eq!(destination, [0xa5; 7]);
     }
 }
