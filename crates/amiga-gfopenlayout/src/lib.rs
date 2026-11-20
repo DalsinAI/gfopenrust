@@ -578,8 +578,10 @@ impl<'runtime> Window<'runtime> {
                             .call_a0(LVO_OLUI_AMIGA_LAYOUT, self.glue.as_ptr());
                     }
                 }
+                unsafe {
+                    self.layout.call_a0(LVO_OLUI_AMIGA_DRAW, self.glue.as_ptr());
+                }
             }
-            unsafe { self.layout.call_a0(LVO_OLUI_AMIGA_DRAW, self.glue.as_ptr()) };
         }
         true
     }
