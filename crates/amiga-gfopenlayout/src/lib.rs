@@ -243,13 +243,13 @@ impl PendingEvent {
         }
     }
 
-    fn dispatch<S: EventSink>(&mut self, sink: &mut S) {
+    fn dispatch<S: EventSink>(&mut self, sink: &mut S) -> bool {
         if !self.ready {
-            return;
+            return false;
         }
         self.ready = false;
         let Ok(id) = CStr::from_bytes_with_nul(&self.id[..=self.id_len]) else {
-            return;
+            return false;
         };
         let value = if self.has_value {
             CStr::from_bytes_with_nul(&self.value[..=self.value_len]).ok()
@@ -268,6 +268,7 @@ impl PendingEvent {
             index: self.index,
             checked: self.checked,
         });
+        true
     }
 }
 
@@ -561,17 +562,18 @@ impl<'runtime> Window<'runtime> {
                         .call_a0_a1(LVO_OLUI_AMIGA_EVENT, self.glue.as_ptr(), message)
                 };
                 unsafe { runtime.reply_message(message) };
-                pending.dispatch(sink);
-                {
-                    let mut ui = Ui {
-                        layout: &self.layout,
-                        ui: self.ui,
-                    };
-                    sink.refresh(&mut ui);
-                }
-                unsafe {
-                    self.layout
-                        .call_a0(LVO_OLUI_AMIGA_LAYOUT, self.glue.as_ptr());
+                if pending.dispatch(sink) {
+                    {
+                        let mut ui = Ui {
+                            layout: &self.layout,
+                            ui: self.ui,
+                        };
+                        sink.refresh(&mut ui);
+                    }
+                    unsafe {
+                        self.layout
+                            .call_a0(LVO_OLUI_AMIGA_LAYOUT, self.glue.as_ptr());
+                    }
                 }
                 if result == OLUI_AMIGA_CLOSE {
                     closed = true;
