@@ -1,0 +1,14 @@
+[package]
+name = "amiga-synth-smoke"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[dependencies]
+amiga-gfopensynth = { path = "../../crates/amiga-gfopensynth" }
+amiga-runtime = { path = "../../crates/amiga-runtime" }
+
+[[bin]]
+name = "amiga-synth-smoke"
+path = "src/main.rs"

@@ -44,6 +44,39 @@ gf_lib_call_d0_d1_d2:
         movem.l (%sp)+,%d2/%a6
         rts
 
+        .globl  gf_lib_call_a0
+gf_lib_call_a0:
+        move.l  %a6,-(%sp)
+        move.l  8(%sp),%a6
+        adda.l  12(%sp),%a6
+        move.l  16(%sp),%a0
+        jsr     (%a6)
+        move.l  (%sp)+,%a6
+        rts
+
+        .globl  gf_lib_call_a0_d0
+gf_lib_call_a0_d0:
+        move.l  %a6,-(%sp)
+        move.l  8(%sp),%a6
+        adda.l  12(%sp),%a6
+        move.l  16(%sp),%a0
+        move.l  20(%sp),%d0
+        jsr     (%a6)
+        move.l  (%sp)+,%a6
+        rts
+
+        .globl  gf_lib_call_a0_a1_d0
+gf_lib_call_a0_a1_d0:
+        move.l  %a6,-(%sp)
+        move.l  8(%sp),%a6
+        adda.l  12(%sp),%a6
+        move.l  16(%sp),%a0
+        move.l  20(%sp),%a1
+        move.l  24(%sp),%d0
+        jsr     (%a6)
+        move.l  (%sp)+,%a6
+        rts
+
         .globl  gf_dos_call_d1_d2_d3
 gf_dos_call_d1_d2_d3:
         movem.l %d2-%d3/%a6,-(%sp)

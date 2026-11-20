@@ -12,7 +12,8 @@ RUSTC_BOOTSTRAP=1 cargo build --release \
     -Zjson-target-spec \
     -Zbuild-std=core,alloc,compiler_builtins \
     -Zbuild-std-features=compiler-builtins-mem \
-    -p amiga-hello
+    -p amiga-hello \
+    -p amiga-synth-smoke
 
 program=target/m68k-amigaos/release/amiga-hello
 nm=${M68K_NM:-m68k-linux-gnu-nm}
@@ -28,6 +29,9 @@ for symbol in \
     gf_lib_call0 \
     gf_lib_call_d0_d1_a0_a1 \
     gf_lib_call_d0_d1_d2 \
+    gf_lib_call_a0 \
+    gf_lib_call_a0_d0 \
+    gf_lib_call_a0_a1_d0 \
     gf_dos_call_d1_d2_d3 \
     gf_dos_call_d1_d2_d3_d4
 do
@@ -38,4 +42,13 @@ done
 "$objdump" -dr "$program" | grep -Eq '<_start>:'
 "$objdump" -dr "$program" | grep -Eq 'jsr[[:space:]].*<gf_amiga_main>'
 
+synth_program=target/m68k-amigaos/release/amiga-synth-smoke
+file "$synth_program" | grep -Eq 'ELF 32-bit MSB executable, Motorola m68k.*statically linked'
+test -z "$("$nm" -u "$synth_program")"
+for symbol in gf_amiga_main gf_lib_call_a0 gf_lib_call_a0_d0; do
+    "$nm" -g --defined-only "$synth_program" | grep -Eq "[[:space:]]${symbol}$"
+done
+"$readelf" -rW "$synth_program" | grep -Fq 'There are no relocations in this file.'
+
 echo "AmigaOS runtime verification passed: $program"
+echo "GFOpenSynth binding verification passed: $synth_program"

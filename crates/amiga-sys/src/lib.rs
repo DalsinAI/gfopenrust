@@ -107,6 +107,9 @@ extern "C" {
         a1: APtr,
     ) -> ULong;
     fn gf_lib_call_d0_d1_d2(base: APtr, lvo: Long, d0: ULong, d1: ULong, d2: ULong) -> ULong;
+    fn gf_lib_call_a0(base: APtr, lvo: Long, a0: APtr) -> ULong;
+    fn gf_lib_call_a0_d0(base: APtr, lvo: Long, a0: APtr, d0: ULong) -> ULong;
+    fn gf_lib_call_a0_a1_d0(base: APtr, lvo: Long, a0: APtr, a1: APtr, d0: ULong) -> ULong;
     fn gf_dos_call_d1_d2_d3(base: APtr, lvo: Long, d1: ULong, d2: ULong, d3: ULong) -> ULong;
     fn gf_dos_call_d1_d2_d3_d4(
         base: APtr,
@@ -141,6 +144,47 @@ unsafe fn lib_call4(
 #[inline]
 unsafe fn lib_call3d(base: LibraryBase, lvo: Long, d0: ULong, d1: ULong, d2: ULong) -> ULong {
     gf_lib_call_d0_d1_d2(base.as_ptr(), lvo, d0, d1, d2)
+}
+
+/// Raw register-shaped calls for typed Amiga library binding crates.
+///
+/// The LVO is negative (for example `-30` for a library's first public
+/// vector).  The typed binding owns all pointer and register validation.
+pub mod library {
+    #[cfg(target_arch = "m68k")]
+    use super::{
+        gf_lib_call_a0, gf_lib_call_a0_a1_d0, gf_lib_call_a0_d0, APtr, LibraryBase, Long, ULong,
+    };
+
+    /// # Safety
+    /// `base` must remain open, `lvo` must name a vector with exactly the
+    /// `a0` signature, and `a0` must meet that vector's pointer contract.
+    #[cfg(target_arch = "m68k")]
+    pub unsafe fn call_a0(base: LibraryBase, lvo: Long, a0: APtr) -> ULong {
+        gf_lib_call_a0(base.as_ptr(), lvo, a0)
+    }
+
+    /// # Safety
+    /// `base` must remain open, `lvo` must name a vector with exactly the
+    /// `a0,d0` signature, and every argument must meet its contract.
+    #[cfg(target_arch = "m68k")]
+    pub unsafe fn call_a0_d0(base: LibraryBase, lvo: Long, a0: APtr, d0: ULong) -> ULong {
+        gf_lib_call_a0_d0(base.as_ptr(), lvo, a0, d0)
+    }
+
+    /// # Safety
+    /// `base` must remain open, `lvo` must name a vector with exactly the
+    /// `a0,a1,d0` signature, and every argument must meet its contract.
+    #[cfg(target_arch = "m68k")]
+    pub unsafe fn call_a0_a1_d0(
+        base: LibraryBase,
+        lvo: Long,
+        a0: APtr,
+        a1: APtr,
+        d0: ULong,
+    ) -> ULong {
+        gf_lib_call_a0_a1_d0(base.as_ptr(), lvo, a0, a1, d0)
+    }
 }
 
 pub mod exec {
