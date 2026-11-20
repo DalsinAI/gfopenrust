@@ -11,24 +11,16 @@ use alloc::vec::Vec;
 #[cfg(target_arch = "m68k")]
 #[no_mangle]
 pub extern "C" fn gf_amiga_main(_args: *const u8, _length: i32) -> i32 {
-    if !unsafe { amiga_runtime::init() } {
-        return 20;
-    }
-
-    let mut proof = Vec::with_capacity(4);
-    proof.extend_from_slice(&[68u8, 69, 70, 71]);
-    let valid = proof == [68u8, 69, 70, 71];
-    unsafe {
-        amiga_runtime::put_str(b"GFOpenRust native AmigaOS runtime\n\0".as_ptr());
-    }
-    drop(proof);
-    unsafe { amiga_runtime::shutdown() };
-
-    if valid {
-        0
-    } else {
-        20
-    }
+    amiga_runtime::run(|runtime| {
+        let mut proof = Vec::with_capacity(4);
+        proof.extend_from_slice(&[68u8, 69, 70, 71]);
+        runtime.put_str(c"GFOpenRust native AmigaOS runtime\n");
+        if proof == [68u8, 69, 70, 71] {
+            0
+        } else {
+            20
+        }
+    })
 }
 
 #[cfg(target_arch = "m68k")]

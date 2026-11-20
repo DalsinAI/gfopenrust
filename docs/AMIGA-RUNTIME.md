@@ -32,14 +32,16 @@ through elf.library on AmigaOS before step 4 can be marked done.
 
 ## Runtime contract
 
-An application exports this C-ABI entry:
+An application exports this C-ABI entry and keeps platform unsafety inside
+the runtime crate:
 
 ```rust
 #[no_mangle]
 pub extern "C" fn gf_amiga_main(args: *const u8, length: i32) -> i32
 ```
 
-It calls `amiga_runtime::init()` before allocation or DOS access, drops all
-allocated values, then calls `amiga_runtime::shutdown()`.  This first runtime
-is deliberately single-task.  The `std` task implementation will add a
-protected allocation policy before exposing Rust threads.
+It calls `amiga_runtime::run`, which opens the services, supplies a safe
+`Runtime` handle to the callback, then drops the callback's allocations before
+deleting the pool.  This first runtime is deliberately single-task.  The
+`std` task implementation will add a protected allocation policy before
+exposing Rust threads.

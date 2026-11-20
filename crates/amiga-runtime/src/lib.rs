@@ -14,6 +14,8 @@ use amiga_sys::{exec, APtr, LibraryBase, MEMF_ANY};
 use core::alloc::GlobalAlloc;
 #[cfg(any(target_arch = "m68k", test))]
 use core::alloc::Layout;
+#[cfg(target_arch = "m68k")]
+use core::ffi::CStr;
 
 #[cfg(any(target_arch = "m68k", test))]
 const BASE_ALIGNMENT: usize = 8;
@@ -45,7 +47,7 @@ static mut POOL: APtr = core::ptr::null_mut();
 /// Call once, before any allocation or DOS call, from the program's initial
 /// task.  No other task may use this runtime while it is initialising.
 #[cfg(target_arch = "m68k")]
-pub unsafe fn init() -> bool {
+unsafe fn init() -> bool {
     if !POOL.is_null() {
         return true;
     }
@@ -74,7 +76,7 @@ pub unsafe fn init() -> bool {
 /// Every Rust value that could own an allocation must be dropped first.  No
 /// other task may be using this runtime.
 #[cfg(target_arch = "m68k")]
-pub unsafe fn shutdown() {
+unsafe fn shutdown() {
     let Some(sys) = LibraryBase::from_raw(SYS_BASE) else {
         return;
     };
@@ -97,11 +99,56 @@ pub unsafe fn shutdown() {
 /// [`init`] must have succeeded and `string` must point to a readable,
 /// NUL-terminated byte string.
 #[cfg(target_arch = "m68k")]
-pub unsafe fn put_str(string: *const u8) -> i32 {
+unsafe fn put_str(string: *const u8) -> i32 {
     let Some(dos) = LibraryBase::from_raw(DOS_BASE) else {
         return -1;
     };
     amiga_sys::dos::put_str(dos, string.cast())
+}
+
+/// The live, single-task AmigaOS runtime.
+///
+/// Applications receive this only inside [`run`], so their allocations are
+/// dropped before the underlying Exec pool is deleted.
+#[cfg(target_arch = "m68k")]
+pub struct Runtime {
+    _private: (),
+}
+
+#[cfg(target_arch = "m68k")]
+impl Runtime {
+    fn start() -> Option<Self> {
+        if unsafe { init() } {
+            Some(Self { _private: () })
+        } else {
+            None
+        }
+    }
+
+    /// Write one NUL-terminated string through dos.library.
+    pub fn put_str(&self, string: &CStr) -> i32 {
+        unsafe { put_str(string.as_ptr().cast()) }
+    }
+}
+
+#[cfg(target_arch = "m68k")]
+impl Drop for Runtime {
+    fn drop(&mut self) {
+        unsafe { shutdown() };
+    }
+}
+
+/// Initialise AmigaOS services, run `application`, then release them.
+///
+/// A failed DOS or pool initialisation returns AmigaDOS failure code 20.
+/// The callback returns only an integer, so values allocated inside it are
+/// dropped before the runtime and its pool.
+#[cfg(target_arch = "m68k")]
+pub fn run(application: impl FnOnce(&Runtime) -> i32) -> i32 {
+    let Some(runtime) = Runtime::start() else {
+        return 20;
+    };
+    application(&runtime)
 }
 
 pub struct ExecPoolAllocator;
