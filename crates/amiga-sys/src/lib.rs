@@ -240,6 +240,7 @@ pub mod exec {
     pub const LVO_WAIT: Long = -318;
     pub const LVO_GET_MSG: Long = -372;
     pub const LVO_REPLY_MSG: Long = -378;
+    pub const LVO_WAIT_PORT: Long = -384;
     pub const LVO_CLOSE_LIBRARY: Long = -414;
     pub const LVO_OPEN_LIBRARY: Long = -552;
     pub const LVO_INIT_SEMAPHORE: Long = -558;
@@ -375,6 +376,11 @@ pub mod exec {
     #[cfg(target_arch = "m68k")]
     pub unsafe fn reply_msg(sys_base: LibraryBase, message: APtr) {
         gf_lib_call_a1(sys_base.as_ptr(), LVO_REPLY_MSG, message);
+    }
+
+    #[cfg(target_arch = "m68k")]
+    pub unsafe fn wait_port(sys_base: LibraryBase, port: APtr) -> APtr {
+        gf_lib_call_a0(sys_base.as_ptr(), LVO_WAIT_PORT, port) as usize as APtr
     }
 }
 

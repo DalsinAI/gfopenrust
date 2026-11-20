@@ -63,7 +63,6 @@ const WINDOW_FLAGS: u32 = WFLG_SIZEGADGET
     | WFLG_ACTIVATE;
 
 const WINDOW_USER_PORT_OFFSET: usize = 86;
-const MSG_PORT_SIGNAL_BIT_OFFSET: usize = 15;
 const OLUI_AMIGA_CLOSE: u32 = 2;
 const OLUI_ANY_EVENT: i32 = 0;
 const OLUI_CLICK: i32 = 1;
@@ -406,23 +405,9 @@ impl<'runtime> Window<'runtime> {
         if port.is_null() {
             return;
         }
-        let signal_bit = unsafe {
-            self.window
-                .as_ptr()
-                .cast::<u8>()
-                .add(WINDOW_USER_PORT_OFFSET)
-                .cast::<*mut u8>()
-                .read_unaligned()
-                .add(MSG_PORT_SIGNAL_BIT_OFFSET)
-                .read()
-        };
-        let signal = 1u32.checked_shl(u32::from(signal_bit)).unwrap_or(0);
-        if signal == 0 {
-            return;
-        }
         let mut closed = false;
         while !closed {
-            runtime.wait(signal);
+            unsafe { runtime.wait_port(port) };
             loop {
                 let message = unsafe { runtime.get_message(port) };
                 if message.is_null() {
@@ -477,23 +462,9 @@ impl<'runtime> Window<'runtime> {
         if port.is_null() {
             return false;
         }
-        let signal_bit = unsafe {
-            self.window
-                .as_ptr()
-                .cast::<u8>()
-                .add(WINDOW_USER_PORT_OFFSET)
-                .cast::<*mut u8>()
-                .read_unaligned()
-                .add(MSG_PORT_SIGNAL_BIT_OFFSET)
-                .read()
-        };
-        let signal = 1u32.checked_shl(u32::from(signal_bit)).unwrap_or(0);
-        if signal == 0 {
-            return false;
-        }
         let mut closed = false;
         while !closed {
-            runtime.wait(signal);
+            unsafe { runtime.wait_port(port) };
             loop {
                 let message = unsafe { runtime.get_message(port) };
                 if message.is_null() {

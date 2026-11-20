@@ -177,6 +177,17 @@ impl Runtime {
         };
         exec::reply_msg(sys, message);
     }
+
+    /// Block until `port` contains at least one message.
+    ///
+    /// # Safety
+    /// `port` must point to a live `MsgPort` owned by this task.
+    pub unsafe fn wait_port(&self, port: *mut c_void) -> *mut c_void {
+        let Some(sys) = LibraryBase::from_raw(SYS_BASE) else {
+            return core::ptr::null_mut();
+        };
+        exec::wait_port(sys, port)
+    }
 }
 
 /// An open Amiga library tied to the runtime that owns Exec.
