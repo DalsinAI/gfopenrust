@@ -16,6 +16,7 @@ use core::ptr::NonNull;
 
 const LVO_OPEN_WINDOW_TAG_LIST: i32 = -606;
 const LVO_CLOSE_WINDOW: i32 = -72;
+const LVO_MODIFY_IDCMP: i32 = -150;
 
 const LVO_OLUI_NEW: i32 = -426;
 const LVO_OLUI_FREE: i32 = -432;
@@ -434,6 +435,14 @@ impl<'runtime> Window<'runtime> {
             ) as usize as *mut c_void
         })
         .ok_or(OpenError::WindowUnavailable)?;
+        // OpenWindowTagList is expected to install this IDCMP mask from
+        // WA_IDCMP.  Apply it explicitly as well: this both documents the
+        // runtime contract and covers Intuition variants which create the
+        // UserPort only when ModifyIDCMP is called after the window exists.
+        if unsafe { intuition.call_a0_d0(LVO_MODIFY_IDCMP, window.as_ptr(), WINDOW_IDCMP) } == 0 {
+            unsafe { intuition.call_a0(LVO_CLOSE_WINDOW, window.as_ptr()) };
+            return Err(OpenError::WindowUnavailable);
+        }
         let ui = match NonNull::new(unsafe { layout.call0(LVO_OLUI_NEW) } as usize as *mut c_void) {
             Some(ui) => ui,
             None => {
