@@ -310,12 +310,17 @@ unsafe extern "C" fn gfopenlayout_event_trampoline(
         return;
     };
     pending.id_len = id_len;
-    pending.has_value = false;
-    if let Some(value_len) = copy_event_text(raw.value, &mut pending.value) {
-        pending.value_len = value_len;
-        pending.has_value = true;
-    }
     pending.event_type = raw.event_type;
+    pending.has_value = false;
+    // A click does not carry a value.  Some older GFOpenLayout builds leave
+    // that field unspecified for value-less events, so only dereference it
+    // for the change events whose API contract actually supplies text.
+    if raw.event_type == OLUI_CHANGE {
+        if let Some(value_len) = copy_event_text(raw.value, &mut pending.value) {
+            pending.value_len = value_len;
+            pending.has_value = true;
+        }
+    }
     pending.index = raw.index;
     pending.checked = raw.checked != 0;
     pending.ready = true;
@@ -528,6 +533,10 @@ impl<'runtime> Window<'runtime> {
             };
             sink.refresh(&mut ui);
         }
+        unsafe {
+            self.layout
+                .call_a0(LVO_OLUI_AMIGA_LAYOUT, self.glue.as_ptr());
+        }
         let port = unsafe {
             (self
                 .window
@@ -559,6 +568,10 @@ impl<'runtime> Window<'runtime> {
                         ui: self.ui,
                     };
                     sink.refresh(&mut ui);
+                }
+                unsafe {
+                    self.layout
+                        .call_a0(LVO_OLUI_AMIGA_LAYOUT, self.glue.as_ptr());
                 }
                 if result == OLUI_AMIGA_CLOSE {
                     closed = true;
