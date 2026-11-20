@@ -132,6 +132,14 @@ impl Runtime {
         unsafe { put_str(string.as_ptr().cast()) }
     }
 
+    /// Yield this task for a number of AmigaDOS ticks (normally 1/50 second).
+    pub fn delay(&self, ticks: u32) {
+        let Some(dos) = (unsafe { LibraryBase::from_raw(DOS_BASE) }) else {
+            return;
+        };
+        unsafe { amiga_sys::dos::delay(dos, ticks) };
+    }
+
     /// Open an Amiga shared library for no longer than this runtime callback.
     pub fn open_library<'runtime>(
         &'runtime self,

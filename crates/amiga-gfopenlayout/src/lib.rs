@@ -499,7 +499,7 @@ impl<'runtime> Window<'runtime> {
         }
         let mut closed = false;
         while !closed {
-            unsafe { runtime.wait_port(port) };
+            runtime.delay(1);
             loop {
                 let message = unsafe { runtime.get_message(port) };
                 if message.is_null() {
@@ -550,7 +550,7 @@ impl<'runtime> Window<'runtime> {
         }
         let mut closed = false;
         while !closed {
-            unsafe { runtime.wait_port(port) };
+            runtime.delay(1);
             let mut refresh = false;
             loop {
                 let message = unsafe { runtime.get_message(port) };

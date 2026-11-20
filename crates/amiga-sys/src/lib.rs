@@ -393,6 +393,7 @@ pub mod dos {
     pub const LVO_WRITE: Long = -48;
     pub const LVO_SEEK: Long = -66;
     pub const LVO_IO_ERR: Long = -132;
+    pub const LVO_DELAY: Long = -198;
     pub const LVO_SET_IO_ERR: Long = -462;
     pub const LVO_RUN_COMMAND: Long = -504;
     pub const LVO_PUT_STR: Long = -948;
@@ -455,6 +456,11 @@ pub mod dos {
     #[cfg(target_arch = "m68k")]
     pub unsafe fn io_err(dos_base: LibraryBase) -> Long {
         call3(dos_base, LVO_IO_ERR, 0, 0, 0) as Long
+    }
+
+    #[cfg(target_arch = "m68k")]
+    pub unsafe fn delay(dos_base: LibraryBase, ticks: ULong) {
+        call3(dos_base, LVO_DELAY, ticks, 0, 0);
     }
 
     #[cfg(target_arch = "m68k")]
