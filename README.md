@@ -16,8 +16,10 @@ Rust for the Amiga: programs written in Rust that run on AmigaOS 3.x on a
   loads it from the Shell. elf.library's `rust/hello` (`core` and `alloc` on an
   exec memory pool) has not been run on an Amiga yet; its fixture runs under
   qemu in elf.library's tests.
-- **Not yet:** an AmigaOS target, the OS's libraries as Rust crates, and
-  `std`. See [docs/PLAN.md](docs/PLAN.md).
+- **In progress:** `crates/amiga-sys` now defines the first native Exec and
+  DOS interfaces, including assembly trampolines for Amiga's register-based
+  library calls. Native validation, the AmigaOS target and `std` remain. See
+  [docs/PLAN.md](docs/PLAN.md) and [docs/AMIGA-SYS.md](docs/AMIGA-SYS.md).
 
 ## Building for the 68040
 
