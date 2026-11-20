@@ -5,7 +5,10 @@
  *     int gf_amiga_main(const unsigned char *args, long length)
  *
  * Copyright (c) 2026 AmiCradle Team. MIT. */
-        .text
+        /* AmigaDOS enters at the first word of the first CODE hunk.  Keep the
+         * startup stub in its own section so the Hunk linker script can place
+         * it before Rust and compiler-builtins code. */
+        .section .text.startup,"ax",@progbits
         .align  2
         .globl  _start
         .type   _start,@function

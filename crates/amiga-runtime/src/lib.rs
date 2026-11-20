@@ -62,19 +62,13 @@ unsafe fn init() -> bool {
 
     let sys = exec::sys_base();
     SYS_BASE = sys.as_ptr();
-    let Some(dos) = exec::open_library(sys, b"dos.library\0".as_ptr().cast(), 36) else {
-        SYS_BASE = core::ptr::null_mut();
-        return false;
-    };
-    DOS_BASE = dos.as_ptr();
+    DOS_BASE = exec::open_library(sys, b"dos.library\0".as_ptr().cast(), 36)
+        .map_or(core::ptr::null_mut(), |dos| dos.as_ptr());
 
-    POOL = exec::create_pool(sys, MEMF_ANY, 8192, 2048);
-    if POOL.is_null() {
-        exec::close_library(sys, dos);
-        DOS_BASE = core::ptr::null_mut();
-        SYS_BASE = core::ptr::null_mut();
-        return false;
-    }
+    // Use the universally available AllocMem path. CreatePool varies across
+    // compatible Exec implementations; it can be re-enabled as an optional
+    // optimisation once native probes cover every supported kernel.
+    POOL = core::ptr::null_mut();
     true
 }
 
@@ -152,6 +146,37 @@ impl Runtime {
             _runtime: PhantomData,
         })
     }
+
+    /// Sleep until at least one signal in `signals` is received.
+    pub fn wait(&self, signals: u32) -> u32 {
+        let Some(sys) = (unsafe { LibraryBase::from_raw(SYS_BASE) }) else {
+            return 0;
+        };
+        unsafe { exec::wait(sys, signals) }
+    }
+
+    /// Remove the next message from an Exec message port.
+    ///
+    /// # Safety
+    /// `port` must point to a live `MsgPort` owned by this task.
+    pub unsafe fn get_message(&self, port: *mut c_void) -> *mut c_void {
+        let Some(sys) = LibraryBase::from_raw(SYS_BASE) else {
+            return core::ptr::null_mut();
+        };
+        exec::get_msg(sys, port)
+    }
+
+    /// Reply an Exec message after the application has finished reading it.
+    ///
+    /// # Safety
+    /// `message` must be a message removed from one of this task's ports and
+    /// must not be accessed again after this call.
+    pub unsafe fn reply_message(&self, message: *mut c_void) {
+        let Some(sys) = LibraryBase::from_raw(SYS_BASE) else {
+            return;
+        };
+        exec::reply_msg(sys, message);
+    }
 }
 
 /// An open Amiga library tied to the runtime that owns Exec.
@@ -168,6 +193,18 @@ pub struct OpenLibrary<'runtime> {
 
 #[cfg(target_arch = "m68k")]
 impl OpenLibrary<'_> {
+    /// # Safety
+    /// `lvo` must have no arguments.
+    pub unsafe fn call0(&self, lvo: i32) -> u32 {
+        amiga_sys::library::call0(self.base, lvo)
+    }
+
+    /// # Safety
+    /// `lvo` must have the `a0,a1` signature and every argument must meet
+    /// the vector's contract.
+    pub unsafe fn call_a0_a1(&self, lvo: i32, a0: *mut c_void, a1: *mut c_void) -> u32 {
+        amiga_sys::library::call_a0_a1(self.base, lvo, a0, a1)
+    }
     /// # Safety
     /// `lvo` must have the `a0` signature and `a0` must meet the vector's
     /// pointer contract.
@@ -187,6 +224,21 @@ impl OpenLibrary<'_> {
     /// the vector's contract.
     pub unsafe fn call_a0_a1_d0(&self, lvo: i32, a0: *mut c_void, a1: *mut c_void, d0: u32) -> u32 {
         amiga_sys::library::call_a0_a1_d0(self.base, lvo, a0, a1, d0)
+    }
+
+    /// # Safety
+    /// `lvo` must have the `a0,a1,a2,a3,d0` signature and every argument
+    /// must meet the vector's contract.
+    pub unsafe fn call_a0_a1_a2_a3_d0(
+        &self,
+        lvo: i32,
+        a0: *mut c_void,
+        a1: *mut c_void,
+        a2: *mut c_void,
+        a3: *mut c_void,
+        d0: u32,
+    ) -> u32 {
+        amiga_sys::library::call_a0_a1_a2_a3_d0(self.base, lvo, a0, a1, a2, a3, d0)
     }
 }
 
@@ -231,10 +283,12 @@ unsafe impl GlobalAlloc for ExecPoolAllocator {
         let Some(sys) = LibraryBase::from_raw(SYS_BASE) else {
             return core::ptr::null_mut();
         };
-        if POOL.is_null() {
-            return core::ptr::null_mut();
+        let raw = if POOL.is_null() {
+            exec::alloc_mem(sys, size32, MEMF_ANY)
+        } else {
+            exec::alloc_pooled(sys, POOL, size32)
         }
-        let raw = exec::alloc_pooled(sys, POOL, size32).cast::<u8>();
+        .cast::<u8>();
         if raw.is_null() || !has_header {
             return raw;
         }
@@ -243,7 +297,11 @@ unsafe impl GlobalAlloc for ExecPoolAllocator {
             .and_then(|value| value.checked_add(layout.align() - 1))
             .map(|value| value & !(layout.align() - 1))
         else {
-            exec::free_pooled(sys, POOL, raw.cast(), size32);
+            if POOL.is_null() {
+                exec::free_mem(sys, raw.cast(), size32);
+            } else {
+                exec::free_pooled(sys, POOL, raw.cast(), size32);
+            }
             return core::ptr::null_mut();
         };
         ((address - HEADER_SIZE) as *mut usize).write(raw as usize);
@@ -260,7 +318,7 @@ unsafe impl GlobalAlloc for ExecPoolAllocator {
         let Some(sys) = LibraryBase::from_raw(SYS_BASE) else {
             return;
         };
-        if pointer.is_null() || POOL.is_null() {
+        if pointer.is_null() {
             return;
         }
         let raw = if has_header {
@@ -268,7 +326,11 @@ unsafe impl GlobalAlloc for ExecPoolAllocator {
         } else {
             pointer
         };
-        exec::free_pooled(sys, POOL, raw.cast(), size32);
+        if POOL.is_null() {
+            exec::free_mem(sys, raw.cast(), size32);
+        } else {
+            exec::free_pooled(sys, POOL, raw.cast(), size32);
+        }
     }
 }
 
