@@ -27,7 +27,6 @@ const LVO_OLUI_SET_TEXT: i32 = -528;
 const LVO_OLUI_SET_DISABLED: i32 = -552;
 const LVO_OLUI_SET_HIDDEN: i32 = -558;
 const LVO_OLUI_SET_STYLE: i32 = -852;
-const LVO_OLUI_AMIGA_IDCMP: i32 = -780;
 const LVO_OLUI_AMIGA_NEW: i32 = -786;
 const LVO_OLUI_AMIGA_FREE: i32 = -792;
 const LVO_OLUI_AMIGA_THEME: i32 = -798;
@@ -61,6 +60,7 @@ const WINDOW_FLAGS: u32 = WFLG_SIZEGADGET
     | WFLG_CLOSEGADGET
     | WFLG_SIMPLE_REFRESH
     | WFLG_ACTIVATE;
+const WINDOW_IDCMP: u32 = 0x0060_061e;
 
 const WINDOW_USER_PORT_OFFSET: usize = 86;
 const OLUI_AMIGA_CLOSE: u32 = 2;
@@ -374,7 +374,6 @@ impl<'runtime> Window<'runtime> {
         let intuition = runtime
             .open_library(c"intuition.library", 39)
             .ok_or(OpenError::IntuitionLibraryUnavailable)?;
-        let idcmp = unsafe { layout.call0(LVO_OLUI_AMIGA_IDCMP) };
         let tags = [
             TagItem {
                 tag: WA_LEFT,
@@ -394,7 +393,7 @@ impl<'runtime> Window<'runtime> {
             },
             TagItem {
                 tag: WA_IDCMP,
-                data: idcmp,
+                data: WINDOW_IDCMP,
             },
             TagItem {
                 tag: WA_FLAGS,
