@@ -20,7 +20,8 @@ core::arch::global_asm!(include_str!("amiga_window.S"));
 
 #[cfg(target_arch = "m68k")]
 unsafe extern "C" {
-    fn gf_window_user_port(window: *mut c_void) -> *mut c_void;
+    fn gf_window_get_message(window: *mut c_void) -> *mut c_void;
+    fn gf_reply_message(message: *mut c_void);
 }
 
 const LVO_OPEN_WINDOW_TAG_LIST: i32 = -606;
@@ -505,10 +506,6 @@ impl<'runtime> Window<'runtime> {
 
     /// Run the Intuition event loop until the close gadget is selected.
     pub fn run(&mut self, runtime: &Runtime) {
-        let port = unsafe { gf_window_user_port(self.window.as_ptr()) };
-        if port.is_null() {
-            return;
-        }
         let mut closed = false;
         while !closed {
             // A one-tick yield keeps this compatible with Exec variants whose
@@ -516,7 +513,7 @@ impl<'runtime> Window<'runtime> {
             // reliably. The queue is still drained fully on every pass.
             runtime.delay(1);
             loop {
-                let message = unsafe { runtime.get_message(port) };
+                let message = unsafe { gf_window_get_message(self.window.as_ptr()) };
                 if message.is_null() {
                     break;
                 }
@@ -524,7 +521,7 @@ impl<'runtime> Window<'runtime> {
                     self.layout
                         .call_a0_a1(LVO_OLUI_AMIGA_EVENT, self.glue.as_ptr(), message)
                 };
-                unsafe { runtime.reply_message(message) };
+                unsafe { gf_reply_message(message) };
                 if result == OLUI_AMIGA_CLOSE {
                     closed = true;
                 }
@@ -552,16 +549,12 @@ impl<'runtime> Window<'runtime> {
         if registered == 0 {
             return false;
         }
-        let port = unsafe { gf_window_user_port(self.window.as_ptr()) };
-        if port.is_null() {
-            return false;
-        }
         let mut closed = false;
         while !closed {
             runtime.delay(1);
             let mut refresh = false;
             loop {
-                let message = unsafe { runtime.get_message(port) };
+                let message = unsafe { gf_window_get_message(self.window.as_ptr()) };
                 if message.is_null() {
                     break;
                 }
@@ -569,7 +562,7 @@ impl<'runtime> Window<'runtime> {
                     self.layout
                         .call_a0_a1(LVO_OLUI_AMIGA_EVENT, self.glue.as_ptr(), message)
                 };
-                unsafe { runtime.reply_message(message) };
+                unsafe { gf_reply_message(message) };
                 let dispatched = pending.dispatch(sink);
                 refresh |= dispatched;
                 if dispatched {

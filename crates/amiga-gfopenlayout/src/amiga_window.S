@@ -6,12 +6,32 @@
         .text
         .align  2
 
-        .globl  gf_window_user_port
-        .type   gf_window_user_port,@function
-gf_window_user_port:
-        move.l  4(%sp),%a0
-        move.l  86(%a0),%d0
+        .globl  gf_window_get_message
+        .type   gf_window_get_message,@function
+gf_window_get_message:
+        move.l  %a6,-(%sp)
+        move.l  8(%sp),%a0
+        move.l  86(%a0),%a0
+        beq.s   .Lno_message_port
+        move.l  4.w,%a6
+        jsr     -372(%a6)
+        move.l  (%sp)+,%a6
         rts
-        .size   gf_window_user_port,.-gf_window_user_port
+.Lno_message_port:
+        moveq   #0,%d0
+        move.l  (%sp)+,%a6
+        rts
+        .size   gf_window_get_message,.-gf_window_get_message
+
+        .globl  gf_reply_message
+        .type   gf_reply_message,@function
+gf_reply_message:
+        move.l  %a6,-(%sp)
+        move.l  8(%sp),%a1
+        move.l  4.w,%a6
+        jsr     -378(%a6)
+        move.l  (%sp)+,%a6
+        rts
+        .size   gf_reply_message,.-gf_reply_message
 
         .section .note.GNU-stack,"",@progbits
