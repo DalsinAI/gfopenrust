@@ -114,11 +114,8 @@ unsafe fn init() -> bool {
 
     let sys = exec::sys_base();
     SYS_BASE = sys.as_ptr();
-    let Some(dos) = exec::open_library(sys, b"dos.library\0".as_ptr().cast(), 36) else {
-        SYS_BASE = core::ptr::null_mut();
-        return false;
-    };
-    DOS_BASE = dos.as_ptr();
+    DOS_BASE = exec::open_library(sys, b"dos.library\0".as_ptr().cast(), 36)
+        .map_or(core::ptr::null_mut(), |dos| dos.as_ptr());
 
     // Use the universally available AllocMem path. CreatePool varies across
     // compatible Exec implementations; it can be re-enabled as an optional
@@ -187,6 +184,14 @@ impl Runtime {
         unsafe { put_str(string.as_ptr().cast()) }
     }
 
+    /// Yield this task for a number of AmigaDOS ticks (normally 1/50 second).
+    pub fn delay(&self, ticks: u32) {
+        let Some(dos) = (unsafe { LibraryBase::from_raw(DOS_BASE) }) else {
+            return;
+        };
+        unsafe { amiga_sys::dos::delay(dos, ticks) };
+    }
+
     /// Open an Amiga shared library for no longer than this runtime callback.
     pub fn open_library<'runtime>(
         &'runtime self,
@@ -200,6 +205,52 @@ impl Runtime {
             base,
             _runtime: PhantomData,
         })
+    }
+
+    /// Sleep until at least one signal in `signals` is received.
+    pub fn wait(&self, signals: u32) -> u32 {
+        let Some(sys) = (unsafe { LibraryBase::from_raw(SYS_BASE) }) else {
+            return 0;
+        };
+        unsafe { exec::wait(sys, signals) }
+    }
+
+    /// Remove the next message from an Exec message port.
+    ///
+    /// # Safety
+    /// `port` must point to a live `MsgPort` owned by this task.
+    pub unsafe fn get_message(&self, port: *mut c_void) -> *mut c_void {
+        let Some(sys) = LibraryBase::from_raw(SYS_BASE) else {
+            return core::ptr::null_mut();
+        };
+        exec::get_msg(sys, port)
+    }
+
+    /// Reply an Exec message after the application has finished reading it.
+    ///
+    /// # Safety
+    /// `message` must be a message removed from one of this task's ports and
+    /// must not be accessed again after this call.
+    pub unsafe fn reply_message(&self, message: *mut c_void) {
+        let Some(sys) = LibraryBase::from_raw(SYS_BASE) else {
+            return;
+        };
+        exec::reply_msg(sys, message);
+    }
+
+    /// Block until `port` contains at least one message.
+    ///
+    /// # Safety
+    /// `port` must point to a live `MsgPort` owned by this task.
+    pub unsafe fn wait_port(&self, port: *mut c_void) -> *mut c_void {
+        let Some(sys) = LibraryBase::from_raw(SYS_BASE) else {
+            return core::ptr::null_mut();
+        };
+        if port.is_null() {
+            return core::ptr::null_mut();
+        }
+
+        exec::wait_port(sys, port)
     }
 }
 
@@ -217,6 +268,18 @@ pub struct OpenLibrary<'runtime> {
 
 #[cfg(target_arch = "m68k")]
 impl OpenLibrary<'_> {
+    /// # Safety
+    /// `lvo` must have no arguments.
+    pub unsafe fn call0(&self, lvo: i32) -> u32 {
+        amiga_sys::library::call0(self.base, lvo)
+    }
+
+    /// # Safety
+    /// `lvo` must have the `a0,a1` signature and every argument must meet
+    /// the vector's contract.
+    pub unsafe fn call_a0_a1(&self, lvo: i32, a0: *mut c_void, a1: *mut c_void) -> u32 {
+        amiga_sys::library::call_a0_a1(self.base, lvo, a0, a1)
+    }
     /// # Safety
     /// `lvo` must have the `a0` signature and `a0` must meet the vector's
     /// pointer contract.
@@ -236,6 +299,21 @@ impl OpenLibrary<'_> {
     /// the vector's contract.
     pub unsafe fn call_a0_a1_d0(&self, lvo: i32, a0: *mut c_void, a1: *mut c_void, d0: u32) -> u32 {
         amiga_sys::library::call_a0_a1_d0(self.base, lvo, a0, a1, d0)
+    }
+
+    /// # Safety
+    /// `lvo` must have the `a0,a1,a2,a3,d0` signature and every argument
+    /// must meet the vector's contract.
+    pub unsafe fn call_a0_a1_a2_a3_d0(
+        &self,
+        lvo: i32,
+        a0: *mut c_void,
+        a1: *mut c_void,
+        a2: *mut c_void,
+        a3: *mut c_void,
+        d0: u32,
+    ) -> u32 {
+        amiga_sys::library::call_a0_a1_a2_a3_d0(self.base, lvo, a0, a1, a2, a3, d0)
     }
 }
 
