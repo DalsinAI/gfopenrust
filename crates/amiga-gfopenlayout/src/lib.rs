@@ -115,6 +115,12 @@ pub enum EventKind {
 pub trait EventSink {
     fn on_event(&mut self, event: Event<'_>);
 
+    /// Return a native Intuition title after an event, when the application
+    /// wants immediate feedback without rebuilding the GFOpenLayout tree.
+    fn window_title(&self) -> Option<&CStr> {
+        None
+    }
+
     /// Apply any state changes after GFOpenLayout has finished dispatching.
     fn refresh(&mut self, _ui: &mut Ui<'_, '_>) {}
 }
@@ -143,7 +149,7 @@ impl Ui<'_, '_> {
         let Some(element) = self.find(id) else {
             return false;
         };
-        let changed = unsafe {
+        unsafe {
             self.layout.call_a0_a1_a2_a3_d0(
                 LVO_OLUI_SET_TEXT,
                 self.ui.as_ptr(),
@@ -152,9 +158,7 @@ impl Ui<'_, '_> {
                 core::ptr::null_mut(),
                 0,
             ) != 0
-        };
-        self.needs_layout |= changed;
-        changed
+        }
     }
 
     pub fn set_style(&mut self, id: &CStr, declarations: &CStr) -> bool {
@@ -187,7 +191,6 @@ impl Ui<'_, '_> {
                 u32::from(hidden),
             );
         }
-        self.needs_layout = true;
         true
     }
 
@@ -560,7 +563,22 @@ impl<'runtime> Window<'runtime> {
                         .call_a0_a1(LVO_OLUI_AMIGA_EVENT, self.glue.as_ptr(), message)
                 };
                 unsafe { runtime.reply_message(message) };
-                refresh |= pending.dispatch(sink);
+                let dispatched = pending.dispatch(sink);
+                refresh |= dispatched;
+                if dispatched {
+                    if let Some(title) = sink.window_title() {
+                        unsafe {
+                            self.intuition.call_a0_a1_a2_a3_d0(
+                                -276,
+                                self.window.as_ptr(),
+                                title.as_ptr().cast_mut().cast(),
+                                usize::MAX as *mut c_void,
+                                core::ptr::null_mut(),
+                                0,
+                            );
+                        }
+                    }
+                }
                 if result == OLUI_AMIGA_CLOSE {
                     closed = true;
                 }
