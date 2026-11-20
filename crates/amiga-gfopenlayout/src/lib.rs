@@ -20,6 +20,13 @@ const LVO_CLOSE_WINDOW: i32 = -72;
 const LVO_OLUI_NEW: i32 = -426;
 const LVO_OLUI_FREE: i32 = -432;
 const LVO_OLUI_LOAD: i32 = -450;
+const LVO_OLUI_ON: i32 = -456;
+const LVO_OLUI_SET_ZOOM: i32 = -462;
+const LVO_OLUI_FIND: i32 = -504;
+const LVO_OLUI_SET_TEXT: i32 = -528;
+const LVO_OLUI_SET_DISABLED: i32 = -552;
+const LVO_OLUI_SET_HIDDEN: i32 = -558;
+const LVO_OLUI_SET_STYLE: i32 = -852;
 const LVO_OLUI_AMIGA_IDCMP: i32 = -780;
 const LVO_OLUI_AMIGA_NEW: i32 = -786;
 const LVO_OLUI_AMIGA_FREE: i32 = -792;
@@ -58,6 +65,7 @@ const WINDOW_FLAGS: u32 = WFLG_SIZEGADGET
 const WINDOW_USER_PORT_OFFSET: usize = 86;
 const MSG_PORT_SIGNAL_BIT_OFFSET: usize = 15;
 const OLUI_AMIGA_CLOSE: u32 = 2;
+const OLUI_CLICK: i32 = 1;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -65,6 +73,161 @@ const OLUI_AMIGA_CLOSE: u32 = 2;
 struct TagItem {
     tag: u32,
     data: u32,
+}
+
+#[repr(C)]
+#[cfg(target_arch = "m68k")]
+struct RawEvent {
+    event_type: i32,
+    element: *mut c_void,
+    id: *const core::ffi::c_char,
+    item: *mut c_void,
+    value: *const core::ffi::c_char,
+    index: i32,
+    checked: i32,
+    x: i32,
+    y: i32,
+    qualifiers: u32,
+    dx: i32,
+    dy: i32,
+}
+
+/// A bounded GFOpenLayout event borrowed for the duration of its callback.
+#[cfg(target_arch = "m68k")]
+pub struct Event<'event> {
+    pub id: &'event CStr,
+    pub value: Option<&'event CStr>,
+    pub index: i32,
+    pub checked: bool,
+}
+
+/// Receives UI events without exposing the C callback ABI to applications.
+#[cfg(target_arch = "m68k")]
+pub trait EventSink {
+    fn on_click(&mut self, event: Event<'_>);
+
+    /// Apply any state changes after GFOpenLayout has finished dispatching.
+    fn refresh(&mut self, _ui: &mut Ui<'_, '_>) {}
+}
+
+/// Safe mutations for the loaded GFOpenLayout tree.
+#[cfg(target_arch = "m68k")]
+pub struct Ui<'window, 'runtime> {
+    layout: &'window OpenLibrary<'runtime>,
+    ui: NonNull<c_void>,
+}
+
+#[cfg(target_arch = "m68k")]
+impl Ui<'_, '_> {
+    fn find(&self, id: &CStr) -> Option<NonNull<c_void>> {
+        NonNull::new(unsafe {
+            self.layout.call_a0_a1(
+                LVO_OLUI_FIND,
+                self.ui.as_ptr(),
+                id.as_ptr().cast_mut().cast(),
+            ) as usize as *mut c_void
+        })
+    }
+
+    pub fn set_text(&mut self, id: &CStr, text: &CStr) -> bool {
+        let Some(element) = self.find(id) else {
+            return false;
+        };
+        unsafe {
+            self.layout.call_a0_a1_a2_a3_d0(
+                LVO_OLUI_SET_TEXT,
+                self.ui.as_ptr(),
+                element.as_ptr(),
+                text.as_ptr().cast_mut().cast(),
+                core::ptr::null_mut(),
+                0,
+            ) != 0
+        }
+    }
+
+    pub fn set_style(&mut self, id: &CStr, declarations: &CStr) -> bool {
+        let Some(element) = self.find(id) else {
+            return false;
+        };
+        unsafe {
+            self.layout.call_a0_a1_a2_a3_d0(
+                LVO_OLUI_SET_STYLE,
+                self.ui.as_ptr(),
+                element.as_ptr(),
+                declarations.as_ptr().cast_mut().cast(),
+                core::ptr::null_mut(),
+                0,
+            ) != 0
+        }
+    }
+
+    pub fn set_hidden(&mut self, id: &CStr, hidden: bool) -> bool {
+        let Some(element) = self.find(id) else {
+            return false;
+        };
+        unsafe {
+            self.layout.call_a0_a1_d0(
+                LVO_OLUI_SET_HIDDEN,
+                self.ui.as_ptr(),
+                element.as_ptr(),
+                u32::from(hidden),
+            );
+        }
+        true
+    }
+
+    pub fn set_disabled(&mut self, id: &CStr, disabled: bool) -> bool {
+        let Some(element) = self.find(id) else {
+            return false;
+        };
+        unsafe {
+            self.layout.call_a0_a1_d0(
+                LVO_OLUI_SET_DISABLED,
+                self.ui.as_ptr(),
+                element.as_ptr(),
+                u32::from(disabled),
+            );
+        }
+        true
+    }
+
+    pub fn set_zoom(&mut self, percent: u16) {
+        unsafe {
+            self.layout.call_a0_d0(
+                LVO_OLUI_SET_ZOOM,
+                self.ui.as_ptr(),
+                u32::from(percent.clamp(25, 400)),
+            );
+        }
+    }
+}
+
+#[cfg(target_arch = "m68k")]
+unsafe extern "C" fn click_trampoline<S: EventSink>(
+    _ui: *mut c_void,
+    event: *const RawEvent,
+    userdata: *mut c_void,
+) {
+    let (Some(raw), Some(sink)) = (unsafe { event.as_ref() }, unsafe {
+        userdata.cast::<S>().as_mut()
+    }) else {
+        return;
+    };
+    if raw.event_type != OLUI_CLICK || raw.id.is_null() {
+        return;
+    }
+    let id = unsafe { CStr::from_ptr(raw.id) };
+    let value = if raw.value.is_null() {
+        None
+    } else {
+        Some(unsafe { CStr::from_ptr(raw.value) })
+    };
+    sink.on_click(Event {
+        id,
+        value,
+        index: raw.index,
+        checked: raw.checked != 0,
+    });
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -260,6 +423,85 @@ impl<'runtime> Window<'runtime> {
             }
             unsafe { self.layout.call_a0(LVO_OLUI_AMIGA_DRAW, self.glue.as_ptr()) };
         }
+    }
+
+    /// Run until close while safely forwarding button clicks to application state.
+    ///
+    /// The window is consumed so GFOpenLayout cannot retain a callback to a sink
+    /// after the sink's borrow ends.
+    pub fn run_with<S: EventSink>(mut self, runtime: &Runtime, sink: &mut S) -> bool {
+        let registered = unsafe {
+            self.layout.call_a0_a1_a2_a3_d0(
+                LVO_OLUI_ON,
+                self.ui.as_ptr(),
+                core::ptr::null_mut(),
+                click_trampoline::<S> as *const () as *mut c_void,
+                sink as *mut S as *mut c_void,
+                OLUI_CLICK as u32,
+            )
+        };
+        if registered == 0 {
+            return false;
+        }
+        {
+            let mut ui = Ui {
+                layout: &self.layout,
+                ui: self.ui,
+            };
+            sink.refresh(&mut ui);
+        }
+        let port = unsafe {
+            (self
+                .window
+                .as_ptr()
+                .cast::<u8>()
+                .add(WINDOW_USER_PORT_OFFSET) as *const *mut c_void)
+                .read_unaligned()
+        };
+        if port.is_null() {
+            return false;
+        }
+        let signal_bit = unsafe {
+            self.window
+                .as_ptr()
+                .cast::<u8>()
+                .add(WINDOW_USER_PORT_OFFSET)
+                .cast::<*mut u8>()
+                .read_unaligned()
+                .add(MSG_PORT_SIGNAL_BIT_OFFSET)
+                .read()
+        };
+        let signal = 1u32.checked_shl(u32::from(signal_bit)).unwrap_or(0);
+        if signal == 0 {
+            return false;
+        }
+        let mut closed = false;
+        while !closed {
+            runtime.wait(signal);
+            loop {
+                let message = unsafe { runtime.get_message(port) };
+                if message.is_null() {
+                    break;
+                }
+                let result = unsafe {
+                    self.layout
+                        .call_a0_a1(LVO_OLUI_AMIGA_EVENT, self.glue.as_ptr(), message)
+                };
+                unsafe { runtime.reply_message(message) };
+                {
+                    let mut ui = Ui {
+                        layout: &self.layout,
+                        ui: self.ui,
+                    };
+                    sink.refresh(&mut ui);
+                }
+                if result == OLUI_AMIGA_CLOSE {
+                    closed = true;
+                }
+            }
+            unsafe { self.layout.call_a0(LVO_OLUI_AMIGA_DRAW, self.glue.as_ptr()) };
+        }
+        true
     }
 }
 
