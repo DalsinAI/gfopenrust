@@ -186,7 +186,22 @@ impl Runtime {
         let Some(sys) = LibraryBase::from_raw(SYS_BASE) else {
             return core::ptr::null_mut();
         };
-        exec::wait_port(sys, port)
+        if port.is_null() {
+            return core::ptr::null_mut();
+        }
+
+        // MsgPort.mp_SigBit is the byte immediately after its 14-byte Node
+        // and one-byte mp_Flags field on the classic 68k ABI.  Waiting for
+        // that signal directly avoids relying on WaitPort implementations
+        // which may poll on compatible kernels; the caller still drains the
+        // port with GetMsg after this returns.
+        const MSG_PORT_SIG_BIT_OFFSET: usize = 15;
+        let signal_bit = port.cast::<u8>().add(MSG_PORT_SIG_BIT_OFFSET).read();
+        if signal_bit >= 32 {
+            return core::ptr::null_mut();
+        }
+        exec::wait(sys, 1u32 << signal_bit);
+        port
     }
 }
 
