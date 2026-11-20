@@ -120,13 +120,10 @@ unsafe fn init() -> bool {
     };
     DOS_BASE = dos.as_ptr();
 
-    POOL = exec::create_pool(sys, MEMF_ANY, 8192, 2048);
-    if POOL.is_null() {
-        exec::close_library(sys, dos);
-        DOS_BASE = core::ptr::null_mut();
-        SYS_BASE = core::ptr::null_mut();
-        return false;
-    }
+    // Use the universally available AllocMem path. CreatePool varies across
+    // compatible Exec implementations; it can be re-enabled as an optional
+    // optimisation once native probes cover every supported kernel.
+    POOL = core::ptr::null_mut();
     true
 }
 
@@ -283,10 +280,12 @@ unsafe impl GlobalAlloc for ExecPoolAllocator {
         let Some(sys) = LibraryBase::from_raw(SYS_BASE) else {
             return core::ptr::null_mut();
         };
-        if POOL.is_null() {
-            return core::ptr::null_mut();
+        let raw = if POOL.is_null() {
+            exec::alloc_mem(sys, size32, MEMF_ANY)
+        } else {
+            exec::alloc_pooled(sys, POOL, size32)
         }
-        let raw = exec::alloc_pooled(sys, POOL, size32).cast::<u8>();
+        .cast::<u8>();
         if raw.is_null() || !has_header {
             return raw;
         }
@@ -295,7 +294,11 @@ unsafe impl GlobalAlloc for ExecPoolAllocator {
             .and_then(|value| value.checked_add(layout.align() - 1))
             .map(|value| value & !(layout.align() - 1))
         else {
-            exec::free_pooled(sys, POOL, raw.cast(), size32);
+            if POOL.is_null() {
+                exec::free_mem(sys, raw.cast(), size32);
+            } else {
+                exec::free_pooled(sys, POOL, raw.cast(), size32);
+            }
             return core::ptr::null_mut();
         };
         ((address - HEADER_SIZE) as *mut usize).write(raw as usize);
@@ -312,7 +315,7 @@ unsafe impl GlobalAlloc for ExecPoolAllocator {
         let Some(sys) = LibraryBase::from_raw(SYS_BASE) else {
             return;
         };
-        if pointer.is_null() || POOL.is_null() {
+        if pointer.is_null() {
             return;
         }
         let raw = if has_header {
@@ -320,7 +323,11 @@ unsafe impl GlobalAlloc for ExecPoolAllocator {
         } else {
             pointer
         };
-        exec::free_pooled(sys, POOL, raw.cast(), size32);
+        if POOL.is_null() {
+            exec::free_mem(sys, raw.cast(), size32);
+        } else {
+            exec::free_pooled(sys, POOL, raw.cast(), size32);
+        }
     }
 }
 
