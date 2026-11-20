@@ -527,17 +527,6 @@ impl<'runtime> Window<'runtime> {
         if registered == 0 {
             return false;
         }
-        {
-            let mut ui = Ui {
-                layout: &self.layout,
-                ui: self.ui,
-            };
-            sink.refresh(&mut ui);
-        }
-        unsafe {
-            self.layout
-                .call_a0(LVO_OLUI_AMIGA_LAYOUT, self.glue.as_ptr());
-        }
         let port = unsafe {
             (self
                 .window
