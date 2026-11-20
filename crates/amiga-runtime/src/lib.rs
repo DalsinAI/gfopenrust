@@ -13,7 +13,7 @@
 core::arch::global_asm!(include_str!("amiga_start.S"));
 
 #[cfg(target_arch = "m68k")]
-use amiga_sys::{exec, APtr, LibraryBase, MEMF_ANY};
+use amiga_sys::{exec, APtr, LibraryBase, MEMF_PUBLIC};
 #[cfg(target_arch = "m68k")]
 use core::alloc::GlobalAlloc;
 #[cfg(any(target_arch = "m68k", test))]
@@ -359,7 +359,7 @@ unsafe impl GlobalAlloc for ExecPoolAllocator {
             return core::ptr::null_mut();
         };
         let raw = if POOL.is_null() {
-            exec::alloc_mem(sys, size32, MEMF_ANY)
+            exec::alloc_mem(sys, size32, MEMF_PUBLIC)
         } else {
             exec::alloc_pooled(sys, POOL, size32)
         }
