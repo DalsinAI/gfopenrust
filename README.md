@@ -18,8 +18,11 @@ Rust for the Amiga: programs written in Rust that run on AmigaOS 3.x on a
   qemu in elf.library's tests.
 - **In progress:** `crates/amiga-sys` now defines the first native Exec and
   DOS interfaces, including assembly trampolines for Amiga's register-based
-  library calls. Native validation, the AmigaOS target and `std` remain. See
-  [docs/PLAN.md](docs/PLAN.md) and [docs/AMIGA-SYS.md](docs/AMIGA-SYS.md).
+  library calls. `targets/m68k-amigaos.json` and `crates/amiga-runtime` now
+  produce a linked AmigaDOS-entry ELF with an Exec-pool global allocator.
+  Native validation and `std` remain. See [docs/PLAN.md](docs/PLAN.md),
+  [docs/AMIGA-SYS.md](docs/AMIGA-SYS.md) and
+  [docs/AMIGA-RUNTIME.md](docs/AMIGA-RUNTIME.md).
 
 ## Building for the 68040
 
@@ -29,6 +32,10 @@ float and the large code model.
     RUSTC_BOOTSTRAP=1 cargo +rust-m68k build --release --target m68k-unknown-none-elf \
         --config /path/to/amicradle-stoves/rust-m68k/cargo-config.toml \
         -Zbuild-std=core,alloc,compiler_builtins -Zbuild-std-features=compiler-builtins-mem
+
+The native target and runtime proof build with:
+
+    tests/check-amiga-runtime.sh
 
 ## Licence
 

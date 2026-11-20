@@ -1,0 +1,32 @@
+{
+  "arch": "m68k",
+  "code-model": "large",
+  "cpu": "M68040",
+  "crt-objects-fallback": "false",
+  "data-layout": "E-m:e-p:32:16:32-i8:8:8-i16:16:16-i32:16:32-n8:16:32-a:0:16-S16",
+  "disable-redzone": true,
+  "env": "",
+  "executables": true,
+  "features": "+isa-68040,-isa-68881,-isa-68882",
+  "linker": "m68k-linux-gnu-gcc",
+  "linker-flavor": "gnu-cc",
+  "llvm-target": "m68k",
+  "metadata": {
+    "description": "Native AmigaOS 3.x programs for the Motorola 68040",
+    "host_tools": false,
+    "std": false,
+    "tier": 3
+  },
+  "os": "amigaos",
+  "panic-strategy": "abort",
+  "pre-link-args": {
+    "gnu-cc": [
+      "-nostdlib",
+      "-Wl,-e,_start"
+    ]
+  },
+  "relocation-model": "static",
+  "target-endian": "big",
+  "target-pointer-width": 32,
+  "vendor": "unknown"
+}

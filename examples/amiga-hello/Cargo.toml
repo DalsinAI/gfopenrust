@@ -1,0 +1,13 @@
+[package]
+name = "amiga-hello"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[dependencies]
+amiga-runtime = { path = "../../crates/amiga-runtime" }
+
+[[bin]]
+name = "amiga-hello"
+path = "src/main.rs"
