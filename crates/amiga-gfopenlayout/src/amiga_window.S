@@ -12,9 +12,10 @@ gf_window_get_message:
         move.l  %a6,-(%sp)
         move.l  8(%sp),%a0
         move.l  86(%a0),%a0
-        beq.s   .Lno_message_port
-        move.l  4.w,%a6
-        jsr     -372(%a6)
+        beq     .Lno_message_port
+        move.l  4,%a6
+        adda.l  #-372,%a6
+        jsr     (%a6)
         move.l  (%sp)+,%a6
         rts
 .Lno_message_port:
@@ -28,8 +29,9 @@ gf_window_get_message:
 gf_reply_message:
         move.l  %a6,-(%sp)
         move.l  8(%sp),%a1
-        move.l  4.w,%a6
-        jsr     -378(%a6)
+        move.l  4,%a6
+        adda.l  #-378,%a6
+        jsr     (%a6)
         move.l  (%sp)+,%a6
         rts
         .size   gf_reply_message,.-gf_reply_message
