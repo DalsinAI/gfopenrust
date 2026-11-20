@@ -501,10 +501,7 @@ impl<'runtime> Window<'runtime> {
         }
         let mut closed = false;
         while !closed {
-            // A one-tick yield keeps this compatible with Exec variants whose
-            // WaitPort/Wait signal path does not wake a foreign-language task
-            // reliably. The queue is still drained fully on every pass.
-            runtime.delay(1);
+            core::hint::spin_loop();
             loop {
                 let message = unsafe { runtime.get_message(port) };
                 if message.is_null() {
@@ -555,7 +552,7 @@ impl<'runtime> Window<'runtime> {
         }
         let mut closed = false;
         while !closed {
-            runtime.delay(1);
+            core::hint::spin_loop();
             let mut refresh = false;
             loop {
                 let message = unsafe { runtime.get_message(port) };
