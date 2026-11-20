@@ -14,6 +14,14 @@ use core::ffi::c_void;
 #[cfg(target_arch = "m68k")]
 use core::ptr::NonNull;
 
+#[cfg(target_arch = "m68k")]
+core::arch::global_asm!(include_str!("amiga_window.S"));
+
+#[cfg(target_arch = "m68k")]
+unsafe extern "C" {
+    fn gf_window_user_port(window: *mut c_void) -> *mut c_void;
+}
+
 const LVO_OPEN_WINDOW_TAG_LIST: i32 = -606;
 const LVO_CLOSE_WINDOW: i32 = -72;
 const LVO_MODIFY_IDCMP: i32 = -150;
@@ -65,7 +73,6 @@ const WINDOW_FLAGS: u32 = WFLG_SIZEGADGET
     | WFLG_ACTIVATE;
 const WINDOW_IDCMP: u32 = 0x0060_061e;
 
-const WINDOW_USER_PORT_OFFSET: usize = 86;
 const OLUI_AMIGA_CLOSE: u32 = 2;
 const OLUI_ANY_EVENT: i32 = 0;
 const OLUI_CLICK: i32 = 1;
@@ -497,14 +504,7 @@ impl<'runtime> Window<'runtime> {
 
     /// Run the Intuition event loop until the close gadget is selected.
     pub fn run(&mut self, runtime: &Runtime) {
-        let port = unsafe {
-            (self
-                .window
-                .as_ptr()
-                .cast::<u8>()
-                .add(WINDOW_USER_PORT_OFFSET) as *const *mut c_void)
-                .read_unaligned()
-        };
+        let port = unsafe { gf_window_user_port(self.window.as_ptr()) };
         if port.is_null() {
             return;
         }
@@ -551,14 +551,7 @@ impl<'runtime> Window<'runtime> {
         if registered == 0 {
             return false;
         }
-        let port = unsafe {
-            (self
-                .window
-                .as_ptr()
-                .cast::<u8>()
-                .add(WINDOW_USER_PORT_OFFSET) as *const *mut c_void)
-                .read_unaligned()
-        };
+        let port = unsafe { gf_window_user_port(self.window.as_ptr()) };
         if port.is_null() {
             return false;
         }
