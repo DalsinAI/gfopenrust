@@ -211,38 +211,114 @@ impl Ui<'_, '_> {
     }
 }
 
+const EVENT_ID_CAPACITY: usize = 64;
+const EVENT_VALUE_CAPACITY: usize = 192;
+
 #[cfg(target_arch = "m68k")]
-unsafe extern "C" fn event_trampoline<S: EventSink>(
+struct PendingEvent {
+    ready: bool,
+    event_type: i32,
+    id: [u8; EVENT_ID_CAPACITY],
+    id_len: usize,
+    value: [u8; EVENT_VALUE_CAPACITY],
+    value_len: usize,
+    has_value: bool,
+    index: i32,
+    checked: bool,
+}
+
+#[cfg(target_arch = "m68k")]
+impl PendingEvent {
+    const fn new() -> Self {
+        Self {
+            ready: false,
+            event_type: 0,
+            id: [0; EVENT_ID_CAPACITY],
+            id_len: 0,
+            value: [0; EVENT_VALUE_CAPACITY],
+            value_len: 0,
+            has_value: false,
+            index: 0,
+            checked: false,
+        }
+    }
+
+    fn dispatch<S: EventSink>(&mut self, sink: &mut S) {
+        if !self.ready {
+            return;
+        }
+        self.ready = false;
+        let Ok(id) = CStr::from_bytes_with_nul(&self.id[..=self.id_len]) else {
+            return;
+        };
+        let value = if self.has_value {
+            CStr::from_bytes_with_nul(&self.value[..=self.value_len]).ok()
+        } else {
+            None
+        };
+        let kind = match self.event_type {
+            OLUI_CLICK => EventKind::Click,
+            OLUI_CHANGE => EventKind::Change,
+            other => EventKind::Other(other),
+        };
+        sink.on_event(Event {
+            kind,
+            id,
+            value,
+            index: self.index,
+            checked: self.checked,
+        });
+    }
+}
+
+#[cfg(target_arch = "m68k")]
+fn copy_event_text(source: *const core::ffi::c_char, target: &mut [u8]) -> Option<usize> {
+    if source.is_null() || target.is_empty() {
+        return None;
+    }
+    for index in 0..target.len() - 1 {
+        let byte = unsafe { source.add(index).read() } as u8;
+        target[index] = byte;
+        if byte == 0 {
+            return Some(index);
+        }
+    }
+    let last = target.len() - 1;
+    target[last] = 0;
+    Some(last)
+}
+
+/// Fixed callback entry point used by GFOpenLayout.
+///
+/// Keeping this symbol non-generic is important for Amiga Hunk linkers: the
+/// callback address remains a normal exported relocation instead of a hidden
+/// monomorphised Rust symbol. Events are copied into bounded storage and are
+/// dispatched to application code only after GFOpenLayout returns.
+#[cfg(target_arch = "m68k")]
+#[unsafe(no_mangle)]
+unsafe extern "C" fn gfopenlayout_event_trampoline(
     _ui: *mut c_void,
     event: *const RawEvent,
     userdata: *mut c_void,
 ) {
-    let (Some(raw), Some(sink)) = (unsafe { event.as_ref() }, unsafe {
-        userdata.cast::<S>().as_mut()
+    let (Some(raw), Some(pending)) = (unsafe { event.as_ref() }, unsafe {
+        userdata.cast::<PendingEvent>().as_mut()
     }) else {
         return;
     };
-    if raw.id.is_null() {
+    let Some(id_len) = copy_event_text(raw.id, &mut pending.id) else {
         return;
+    };
+    pending.id_len = id_len;
+    pending.has_value = false;
+    if let Some(value_len) = copy_event_text(raw.value, &mut pending.value) {
+        pending.value_len = value_len;
+        pending.has_value = true;
     }
-    let id = unsafe { CStr::from_ptr(raw.id) };
-    let value = if raw.value.is_null() {
-        None
-    } else {
-        Some(unsafe { CStr::from_ptr(raw.value) })
-    };
-    let kind = match raw.event_type {
-        OLUI_CLICK => EventKind::Click,
-        OLUI_CHANGE => EventKind::Change,
-        other => EventKind::Other(other),
-    };
-    sink.on_event(Event {
-        kind,
-        id,
-        value,
-        index: raw.index,
-        checked: raw.checked != 0,
-    });
+    pending.event_type = raw.event_type;
+    pending.index = raw.index;
+    pending.checked = raw.checked != 0;
+    pending.ready = true;
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -431,13 +507,14 @@ impl<'runtime> Window<'runtime> {
     /// The window is consumed so GFOpenLayout cannot retain a callback to a sink
     /// after the sink's borrow ends.
     pub fn run_with<S: EventSink>(mut self, runtime: &Runtime, sink: &mut S) -> bool {
+        let mut pending = PendingEvent::new();
         let registered = unsafe {
             self.layout.call_a0_a1_a2_a3_d0(
                 LVO_OLUI_ON,
                 self.ui.as_ptr(),
                 core::ptr::null_mut(),
-                event_trampoline::<S> as *const () as *mut c_void,
-                sink as *mut S as *mut c_void,
+                gfopenlayout_event_trampoline as *const () as *mut c_void,
+                (&mut pending as *mut PendingEvent).cast(),
                 OLUI_ANY_EVENT as u32,
             )
         };
@@ -475,6 +552,7 @@ impl<'runtime> Window<'runtime> {
                         .call_a0_a1(LVO_OLUI_AMIGA_EVENT, self.glue.as_ptr(), message)
                 };
                 unsafe { runtime.reply_message(message) };
+                pending.dispatch(sink);
                 {
                     let mut ui = Ui {
                         layout: &self.layout,
