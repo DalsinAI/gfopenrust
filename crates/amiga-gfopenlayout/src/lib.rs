@@ -143,7 +143,7 @@ impl Ui<'_, '_> {
         let Some(element) = self.find(id) else {
             return false;
         };
-        unsafe {
+        let changed = unsafe {
             self.layout.call_a0_a1_a2_a3_d0(
                 LVO_OLUI_SET_TEXT,
                 self.ui.as_ptr(),
@@ -152,7 +152,9 @@ impl Ui<'_, '_> {
                 core::ptr::null_mut(),
                 0,
             ) != 0
-        }
+        };
+        self.needs_layout |= changed;
+        changed
     }
 
     pub fn set_style(&mut self, id: &CStr, declarations: &CStr) -> bool {
@@ -201,6 +203,7 @@ impl Ui<'_, '_> {
                 u32::from(disabled),
             );
         }
+        self.needs_layout = true;
         true
     }
 
