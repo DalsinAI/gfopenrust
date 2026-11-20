@@ -1,0 +1,12 @@
+[package]
+name = "amiga-sys"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Raw AmigaOS 3.x ABI calls for native m68k Rust programs"
+repository = "https://github.com/DalsinAI/gfopenrust"
+publish = false
+build = "build.rs"
+
+[lib]
+path = "src/lib.rs"
