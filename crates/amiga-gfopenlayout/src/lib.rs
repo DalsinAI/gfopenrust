@@ -499,7 +499,7 @@ impl<'runtime> Window<'runtime> {
         }
         let mut closed = false;
         while !closed {
-            runtime.delay(1);
+            unsafe { runtime.wait_port(port) };
             loop {
                 let message = unsafe { runtime.get_message(port) };
                 if message.is_null() {
@@ -550,7 +550,7 @@ impl<'runtime> Window<'runtime> {
         }
         let mut closed = false;
         while !closed {
-            runtime.delay(1);
+            unsafe { runtime.wait_port(port) };
             let mut refresh = false;
             loop {
                 let message = unsafe { runtime.get_message(port) };
@@ -565,7 +565,6 @@ impl<'runtime> Window<'runtime> {
                 let dispatched = pending.dispatch(sink);
                 refresh |= dispatched;
                 if dispatched {
-                    runtime.put_str(c"GFOpenLayout: application event dispatched\n");
                     if let Some(title) = sink.window_title() {
                         unsafe {
                             self.intuition.call_a0_a1_a2_a3_d0(
@@ -600,8 +599,7 @@ impl<'runtime> Window<'runtime> {
                     }
                 }
                 unsafe {
-                    self.layout
-                        .call_a0(LVO_OLUI_AMIGA_DRAW, self.glue.as_ptr());
+                    self.layout.call_a0(LVO_OLUI_AMIGA_DRAW, self.glue.as_ptr());
                 }
             }
         }
