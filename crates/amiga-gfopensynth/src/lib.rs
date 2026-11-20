@@ -12,8 +12,10 @@ use core::ptr::NonNull;
 
 const STATUS_NOTE_OFF: u8 = 0x80;
 const STATUS_NOTE_ON: u8 = 0x90;
+const STATUS_POLY_PRESSURE: u8 = 0xa0;
 const STATUS_CONTROL: u8 = 0xb0;
 const STATUS_PROGRAM: u8 = 0xc0;
+const STATUS_CHANNEL_PRESSURE: u8 = 0xd0;
 const STATUS_PITCH_BEND: u8 = 0xe0;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -40,11 +42,23 @@ impl ShortMessage {
         pack_channel_message(STATUS_CONTROL, channel, controller, value)
     }
 
+    pub fn poly_pressure(channel: u8, pitch: u8, pressure: u8) -> Result<Self, MessageError> {
+        pack_channel_message(STATUS_POLY_PRESSURE, channel, pitch, pressure)
+    }
+
     pub fn program_change(channel: u8, program: u8) -> Result<Self, MessageError> {
         validate_channel(channel)?;
         validate_data(program)?;
         Ok(Self(
             u32::from(STATUS_PROGRAM | channel) | (u32::from(program) << 8),
+        ))
+    }
+
+    pub fn channel_pressure(channel: u8, pressure: u8) -> Result<Self, MessageError> {
+        validate_channel(channel)?;
+        validate_data(pressure)?;
+        Ok(Self(
+            u32::from(STATUS_CHANNEL_PRESSURE | channel) | (u32::from(pressure) << 8),
         ))
     }
 
@@ -196,8 +210,16 @@ mod tests {
             Ok(0x007f_07b0)
         );
         assert_eq!(
+            ShortMessage::poly_pressure(4, 65, 99).map(ShortMessage::packed),
+            Ok(0x0063_41a4)
+        );
+        assert_eq!(
             ShortMessage::program_change(15, 127).map(ShortMessage::packed),
             Ok(0x0000_7fcf)
+        );
+        assert_eq!(
+            ShortMessage::channel_pressure(1, 85).map(ShortMessage::packed),
+            Ok(0x0000_55d1)
         );
         assert_eq!(
             ShortMessage::all_notes_off(3).map(ShortMessage::packed),
@@ -237,6 +259,14 @@ mod tests {
         );
         assert_eq!(
             ShortMessage::note_on(0, 60, 128),
+            Err(MessageError::InvalidData)
+        );
+        assert_eq!(
+            ShortMessage::poly_pressure(0, 60, 128),
+            Err(MessageError::InvalidData)
+        );
+        assert_eq!(
+            ShortMessage::channel_pressure(0, 128),
             Err(MessageError::InvalidData)
         );
     }
