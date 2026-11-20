@@ -13,7 +13,7 @@ _start:
         move.l  %d0,-(%sp)
         move.l  %a0,-(%sp)
         jsr     gf_amiga_main
-        addq.l  #8,%sp
+        lea     8(%sp),%sp
         rts
         .size   _start,.-_start
 

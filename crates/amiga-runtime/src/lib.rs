@@ -7,6 +7,10 @@
 //! be dropped before [`shutdown`] deletes that pool.
 
 #![no_std]
+#![cfg_attr(target_arch = "m68k", feature(asm_experimental_arch))]
+
+#[cfg(target_arch = "m68k")]
+core::arch::global_asm!(include_str!("amiga_start.S"));
 
 #[cfg(target_arch = "m68k")]
 use amiga_sys::{exec, APtr, LibraryBase, MEMF_ANY};

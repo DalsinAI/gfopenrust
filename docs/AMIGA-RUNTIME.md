@@ -7,6 +7,8 @@ pool design in GFOpenELF rather than inventing a second ABI:
   68040, soft float, the large code model, static relocation and panic abort;
 - `crates/amiga-runtime` supplies the AmigaDOS D0/A0 entry, opens
   dos.library and owns one Exec allocation pool;
+- startup and library-call assembly are embedded with Rust's integrated
+  assembler, avoiding host-specific m68k object and archive formats;
 - its global allocator preserves alignments above the pool's eight-byte base
   alignment by storing the original block immediately before the aligned
   answer;
