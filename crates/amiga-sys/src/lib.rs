@@ -7,9 +7,13 @@
 //! task lifetime and pointer validity remain the caller's responsibility.
 
 #![no_std]
+#![cfg_attr(target_arch = "m68k", feature(asm_experimental_arch))]
 
 use core::ffi::{c_char, c_void};
 use core::ptr::NonNull;
+
+#[cfg(target_arch = "m68k")]
+core::arch::global_asm!(include_str!("amiga_calls.S"));
 
 pub type Byte = i8;
 pub type UByte = u8;

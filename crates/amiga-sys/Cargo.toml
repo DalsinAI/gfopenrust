@@ -6,7 +6,6 @@ license = "MIT"
 description = "Raw AmigaOS 3.x ABI calls for native m68k Rust programs"
 repository = "https://github.com/DalsinAI/gfopenrust"
 publish = false
-build = "build.rs"
 
 [lib]
 path = "src/lib.rs"

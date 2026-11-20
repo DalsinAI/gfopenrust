@@ -36,10 +36,11 @@ RUN_M68K_RUST=1 tests/check-amiga-sys.sh
 ```
 
 A 68040 build uses GFOpenRust's patched Rust 1.97 toolchain and the
-`m68k-unknown-none-elf` target.  `build.rs` compiles the ABI trampolines with
-`m68k-linux-gnu-gcc` and archives them with `m68k-linux-gnu-ar`; override
-those names with `M68K_CC` and `M68K_AR` when the stove exposes a different
-prefix.
+`m68k-unknown-none-elf` target.  The crate embeds the ABI trampolines with
+Rust's integrated assembler, so consuming applications do not need a second
+cross-compiler or a toolchain-specific archive format.  The standalone gate
+still assembles and disassembles the source with GNU m68k tools as an
+independent instruction-level check.
 
 This is deliberately only plan step 3.  The next slice adds the
 `m68k-amigaos` target, startup and an Exec-pool global allocator; then `std`
