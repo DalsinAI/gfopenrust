@@ -124,6 +124,7 @@ pub trait EventSink {
 pub struct Ui<'window, 'runtime> {
     layout: &'window OpenLibrary<'runtime>,
     ui: NonNull<c_void>,
+    needs_layout: bool,
 }
 
 #[cfg(target_arch = "m68k")]
@@ -158,7 +159,7 @@ impl Ui<'_, '_> {
         let Some(element) = self.find(id) else {
             return false;
         };
-        unsafe {
+        let changed = unsafe {
             self.layout.call_a0_a1_a2_a3_d0(
                 LVO_OLUI_SET_STYLE,
                 self.ui.as_ptr(),
@@ -167,7 +168,9 @@ impl Ui<'_, '_> {
                 core::ptr::null_mut(),
                 0,
             ) != 0
-        }
+        };
+        self.needs_layout |= changed;
+        changed
     }
 
     pub fn set_hidden(&mut self, id: &CStr, hidden: bool) -> bool {
@@ -182,6 +185,7 @@ impl Ui<'_, '_> {
                 u32::from(hidden),
             );
         }
+        self.needs_layout = true;
         true
     }
 
@@ -208,6 +212,7 @@ impl Ui<'_, '_> {
                 u32::from(percent.clamp(25, 400)),
             );
         }
+        self.needs_layout = true;
     }
 }
 
@@ -558,16 +563,20 @@ impl<'runtime> Window<'runtime> {
                 }
             }
             if refresh {
-                {
+                let needs_layout = {
                     let mut ui = Ui {
                         layout: &self.layout,
                         ui: self.ui,
+                        needs_layout: false,
                     };
                     sink.refresh(&mut ui);
-                }
-                unsafe {
-                    self.layout
-                        .call_a0(LVO_OLUI_AMIGA_LAYOUT, self.glue.as_ptr());
+                    ui.needs_layout
+                };
+                if needs_layout {
+                    unsafe {
+                        self.layout
+                            .call_a0(LVO_OLUI_AMIGA_LAYOUT, self.glue.as_ptr());
+                    }
                 }
             }
             unsafe { self.layout.call_a0(LVO_OLUI_AMIGA_DRAW, self.glue.as_ptr()) };
