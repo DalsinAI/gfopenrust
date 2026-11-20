@@ -64,11 +64,15 @@ const WINDOW_FLAGS: u32 = WFLG_SIZEGADGET
     | WFLG_ACTIVATE;
 const WINDOW_IDCMP: u32 = 0x0060_061e;
 
-const WINDOW_USER_PORT_OFFSET: usize = 86;
 const OLUI_AMIGA_CLOSE: u32 = 2;
 const OLUI_ANY_EVENT: i32 = 0;
 const OLUI_CLICK: i32 = 1;
 const OLUI_CHANGE: i32 = 2;
+
+#[cfg(target_arch = "m68k")]
+unsafe extern "C" {
+    fn gf_window_get_message(window: *mut c_void) -> *mut c_void;
+}
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -488,22 +492,11 @@ impl<'runtime> Window<'runtime> {
 
     /// Run the Intuition event loop until the close gadget is selected.
     pub fn run(&mut self, runtime: &Runtime) {
-        let port = unsafe {
-            (self
-                .window
-                .as_ptr()
-                .cast::<u8>()
-                .add(WINDOW_USER_PORT_OFFSET) as *const *mut c_void)
-                .read_unaligned()
-        };
-        if port.is_null() {
-            return;
-        }
         let mut closed = false;
         while !closed {
             core::hint::spin_loop();
             loop {
-                let message = unsafe { runtime.get_message(port) };
+                let message = unsafe { gf_window_get_message(self.window.as_ptr()) };
                 if message.is_null() {
                     break;
                 }
@@ -539,23 +532,12 @@ impl<'runtime> Window<'runtime> {
         if registered == 0 {
             return false;
         }
-        let port = unsafe {
-            (self
-                .window
-                .as_ptr()
-                .cast::<u8>()
-                .add(WINDOW_USER_PORT_OFFSET) as *const *mut c_void)
-                .read_unaligned()
-        };
-        if port.is_null() {
-            return false;
-        }
         let mut closed = false;
         while !closed {
             core::hint::spin_loop();
             let mut refresh = false;
             loop {
-                let message = unsafe { runtime.get_message(port) };
+                let message = unsafe { gf_window_get_message(self.window.as_ptr()) };
                 if message.is_null() {
                     break;
                 }
