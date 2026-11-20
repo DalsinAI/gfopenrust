@@ -63,7 +63,6 @@ const WINDOW_FLAGS: u32 = WFLG_SIZEGADGET
 const WINDOW_IDCMP: u32 = 0x0060_061e;
 
 const WINDOW_USER_PORT_OFFSET: usize = 86;
-const MSG_PORT_SIGNAL_BIT_OFFSET: usize = 15;
 const OLUI_AMIGA_CLOSE: u32 = 2;
 const OLUI_ANY_EVENT: i32 = 0;
 const OLUI_CLICK: i32 = 1;
@@ -361,17 +360,6 @@ pub struct Window<'runtime> {
 
 #[cfg(target_arch = "m68k")]
 impl<'runtime> Window<'runtime> {
-    fn wait_for_window_message(&self, runtime: &Runtime, port: *mut c_void) {
-        // Match the proven C event loop exactly: Wait() on the window port's
-        // signal bit, then drain it with GetMsg().  Some compatible kernels
-        // implement WaitPort() differently enough that a Rust task can sleep
-        // past an already queued IntuiMessage.
-        let signal_bit = unsafe { port.cast::<u8>().add(MSG_PORT_SIGNAL_BIT_OFFSET).read() };
-        if signal_bit < u32::BITS as u8 {
-            runtime.wait(1u32 << signal_bit);
-        }
-    }
-
     pub fn open(
         runtime: &'runtime Runtime,
         title: &CStr,
@@ -511,7 +499,10 @@ impl<'runtime> Window<'runtime> {
         }
         let mut closed = false;
         while !closed {
-            self.wait_for_window_message(runtime, port);
+            // A one-tick yield keeps this compatible with Exec variants whose
+            // WaitPort/Wait signal path does not wake a foreign-language task
+            // reliably. The queue is still drained fully on every pass.
+            runtime.delay(1);
             loop {
                 let message = unsafe { runtime.get_message(port) };
                 if message.is_null() {
@@ -562,7 +553,7 @@ impl<'runtime> Window<'runtime> {
         }
         let mut closed = false;
         while !closed {
-            self.wait_for_window_message(runtime, port);
+            runtime.delay(1);
             let mut refresh = false;
             loop {
                 let message = unsafe { runtime.get_message(port) };
