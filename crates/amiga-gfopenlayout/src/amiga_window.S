@@ -16,10 +16,12 @@ gf_window_get_message:
         move.l  4,%a6
         adda.l  #-372,%a6
         jsr     (%a6)
+        move.l  %d0,%a0
         move.l  (%sp)+,%a6
         rts
 .Lno_message_port:
         moveq   #0,%d0
+        suba.l  %a0,%a0
         move.l  (%sp)+,%a6
         rts
         .size   gf_window_get_message,.-gf_window_get_message

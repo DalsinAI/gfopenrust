@@ -534,7 +534,7 @@ impl<'runtime> Window<'runtime> {
     ///
     /// The window is consumed so GFOpenLayout cannot retain a callback to a sink
     /// after the sink's borrow ends.
-    pub fn run_with<S: EventSink>(mut self, runtime: &Runtime, sink: &mut S) -> bool {
+    pub fn run_with<S: EventSink>(self, runtime: &Runtime, sink: &mut S) -> bool {
         let mut pending = PendingEvent::new();
         let registered = unsafe {
             self.layout.call_a0_a1_a2_a3_d0(
