@@ -3,6 +3,7 @@
 
 #![no_std]
 #![cfg_attr(not(target_arch = "m68k"), allow(dead_code))]
+#![cfg_attr(target_arch = "m68k", feature(asm_experimental_arch))]
 
 #[cfg(target_arch = "m68k")]
 use core::ffi::CStr;
