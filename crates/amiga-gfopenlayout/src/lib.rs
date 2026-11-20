@@ -53,12 +53,14 @@ const WFLG_DRAGBAR: u32 = 0x0000_0002;
 const WFLG_DEPTHGADGET: u32 = 0x0000_0004;
 const WFLG_CLOSEGADGET: u32 = 0x0000_0008;
 const WFLG_SIMPLE_REFRESH: u32 = 0x0000_0040;
+const WFLG_REPORTMOUSE: u32 = 0x0000_0200;
 const WFLG_ACTIVATE: u32 = 0x0000_1000;
 const WINDOW_FLAGS: u32 = WFLG_SIZEGADGET
     | WFLG_DRAGBAR
     | WFLG_DEPTHGADGET
     | WFLG_CLOSEGADGET
     | WFLG_SIMPLE_REFRESH
+    | WFLG_REPORTMOUSE
     | WFLG_ACTIVATE;
 const WINDOW_IDCMP: u32 = 0x0060_061e;
 
@@ -634,6 +636,7 @@ mod tests {
         assert_eq!(WA_LEFT, 0x8000_0064);
         assert_eq!(WA_IDCMP, 0x8000_006a);
         assert_eq!(WA_TITLE, 0x8000_006e);
+        assert_ne!(WINDOW_FLAGS & WFLG_REPORTMOUSE, 0);
     }
 
     #[test]
