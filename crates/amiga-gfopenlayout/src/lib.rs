@@ -490,6 +490,7 @@ impl<'runtime> Window<'runtime> {
         let mut closed = false;
         while !closed {
             unsafe { runtime.wait_port(port) };
+            let mut refresh = false;
             loop {
                 let message = unsafe { runtime.get_message(port) };
                 if message.is_null() {
@@ -562,21 +563,22 @@ impl<'runtime> Window<'runtime> {
                         .call_a0_a1(LVO_OLUI_AMIGA_EVENT, self.glue.as_ptr(), message)
                 };
                 unsafe { runtime.reply_message(message) };
-                if pending.dispatch(sink) {
-                    {
-                        let mut ui = Ui {
-                            layout: &self.layout,
-                            ui: self.ui,
-                        };
-                        sink.refresh(&mut ui);
-                    }
-                    unsafe {
-                        self.layout
-                            .call_a0(LVO_OLUI_AMIGA_LAYOUT, self.glue.as_ptr());
-                    }
-                }
+                refresh |= pending.dispatch(sink);
                 if result == OLUI_AMIGA_CLOSE {
                     closed = true;
+                }
+            }
+            if refresh {
+                {
+                    let mut ui = Ui {
+                        layout: &self.layout,
+                        ui: self.ui,
+                    };
+                    sink.refresh(&mut ui);
+                }
+                unsafe {
+                    self.layout
+                        .call_a0(LVO_OLUI_AMIGA_LAYOUT, self.glue.as_ptr());
                 }
             }
             unsafe { self.layout.call_a0(LVO_OLUI_AMIGA_DRAW, self.glue.as_ptr()) };
