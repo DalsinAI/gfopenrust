@@ -1,3 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/amiga-sys"]
+members = ["crates/amiga-runtime", "crates/amiga-sys", "examples/amiga-hello"]
+
+[profile.release]
+panic = "abort"

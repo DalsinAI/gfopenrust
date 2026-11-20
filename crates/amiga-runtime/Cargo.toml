@@ -1,0 +1,15 @@
+[package]
+name = "amiga-runtime"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Startup and Exec-pool allocator for native AmigaOS 3.x Rust programs"
+repository = "https://github.com/DalsinAI/gfopenrust"
+publish = false
+build = "build.rs"
+
+[dependencies]
+amiga-sys = { path = "../amiga-sys" }
+
+[lib]
+path = "src/lib.rs"
