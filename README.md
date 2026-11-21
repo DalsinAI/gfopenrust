@@ -23,7 +23,11 @@ Rust for the Amiga: programs written in Rust that run on AmigaOS 3.x on a
   `crates/amiga-gfopensynth` adds the first safe typed shared-library binding:
   short MIDI messages, SysEx and reset through `gfopensynth.library` version
   1, with the library and synth lifetimes tied to the runtime callback.
-  Native validation and `std` remain. See [docs/PLAN.md](docs/PLAN.md),
+  `crates/amiga-gfopenlayout` adds bounded native windows, layout loading,
+  controls and event dispatch behind a safe application callback.  Those
+  runtime and service paths have driven native Craft editors in an isolated
+  AmigaOS 3.x 68040 lab; broader platform validation and `std` remain. See
+  [docs/PLAN.md](docs/PLAN.md),
   [docs/AMIGA-SYS.md](docs/AMIGA-SYS.md) and
   [docs/AMIGA-RUNTIME.md](docs/AMIGA-RUNTIME.md).
 
