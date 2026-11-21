@@ -268,6 +268,12 @@ pub struct OpenLibrary<'runtime> {
 
 #[cfg(target_arch = "m68k")]
 impl OpenLibrary<'_> {
+    /// Raw library base for typed binding shims whose register contract cannot
+    /// be represented by the generic vector helpers.
+    pub fn raw_base(&self) -> *mut c_void {
+        self.base.as_ptr()
+    }
+
     /// # Safety
     /// `lvo` must have no arguments.
     pub unsafe fn call0(&self, lvo: i32) -> u32 {

@@ -6,6 +6,9 @@
 #![cfg_attr(target_arch = "m68k", feature(asm_experimental_arch))]
 
 #[cfg(target_arch = "m68k")]
+extern crate alloc;
+
+#[cfg(target_arch = "m68k")]
 use core::ffi::CStr;
 
 #[cfg(target_arch = "m68k")]
@@ -20,8 +23,20 @@ core::arch::global_asm!(include_str!("amiga_window.S"));
 
 #[cfg(target_arch = "m68k")]
 unsafe extern "C" {
+    fn gf_openlayout_register_event_handler(
+        library_base: *mut c_void,
+        ui: *mut c_void,
+        id: *const core::ffi::c_char,
+        userdata: *mut c_void,
+    ) -> u32;
+    fn gf_copy_cstr_bounded(
+        source: *const core::ffi::c_char,
+        target: *mut u8,
+        capacity: usize,
+    ) -> usize;
     fn gf_window_get_message(window: *mut c_void) -> *mut c_void;
     fn gf_reply_message(message: *mut c_void);
+    fn gf_window_signal_mask(window: *mut c_void) -> u32;
 }
 
 const LVO_OPEN_WINDOW_TAG_LIST: i32 = -606;
@@ -31,7 +46,6 @@ const LVO_MODIFY_IDCMP: i32 = -150;
 const LVO_OLUI_NEW: i32 = -426;
 const LVO_OLUI_FREE: i32 = -432;
 const LVO_OLUI_LOAD: i32 = -450;
-const LVO_OLUI_ON: i32 = -456;
 const LVO_OLUI_SET_ZOOM: i32 = -462;
 const LVO_OLUI_FIND: i32 = -504;
 const LVO_OLUI_SET_TEXT: i32 = -528;
@@ -76,7 +90,6 @@ const WINDOW_FLAGS: u32 = WFLG_SIZEGADGET
 const WINDOW_IDCMP: u32 = 0x0060_061e;
 
 const OLUI_AMIGA_CLOSE: u32 = 2;
-const OLUI_ANY_EVENT: i32 = 0;
 const OLUI_CLICK: i32 = 1;
 const OLUI_CHANGE: i32 = 2;
 
@@ -110,6 +123,9 @@ struct RawEvent {
 pub struct Event<'event> {
     pub kind: EventKind,
     pub id: &'event CStr,
+    /// Zero-based position in [`EventSink::click_ids`] for an id-specific
+    /// registration. Generic registrations report zero.
+    pub registration: usize,
     pub value: Option<&'event CStr>,
     pub index: i32,
     pub checked: bool,
@@ -125,7 +141,17 @@ pub enum EventKind {
 /// Receives UI events without exposing the C callback ABI to applications.
 #[cfg(target_arch = "m68k")]
 pub trait EventSink {
-    fn on_event(&mut self, event: Event<'_>);
+    /// Handle one event and report whether application-visible state changed.
+    /// Returning false keeps GFOpenLayout's active press and focus state
+    /// untouched between related native input messages.
+    fn on_event(&mut self, event: Event<'_>) -> bool;
+
+    /// Button ids this sink handles. Registering each id separately also lets
+    /// the safe bridge retain the id without borrowing GFOpenLayout's event
+    /// record after the native callback returns.
+    fn click_ids(&self) -> &'static [&'static CStr] {
+        &[]
+    }
 
     /// Return a native Intuition title after an event, when the application
     /// wants immediate feedback without rebuilding the GFOpenLayout tree.
@@ -236,11 +262,14 @@ impl Ui<'_, '_> {
 
 const EVENT_ID_CAPACITY: usize = 64;
 const EVENT_VALUE_CAPACITY: usize = 192;
+const EVENT_HANDLER_CAPACITY: usize = 32;
 
+#[derive(Clone, Copy)]
 #[cfg(target_arch = "m68k")]
 struct PendingEvent {
     ready: bool,
     event_type: i32,
+    registration: usize,
     id: [u8; EVENT_ID_CAPACITY],
     id_len: usize,
     value: [u8; EVENT_VALUE_CAPACITY],
@@ -251,11 +280,70 @@ struct PendingEvent {
 }
 
 #[cfg(target_arch = "m68k")]
+struct EventMailbox {
+    event: PendingEvent,
+}
+
+#[derive(Clone, Copy)]
+#[cfg(target_arch = "m68k")]
+struct HandlerContext {
+    mailbox: *mut EventMailbox,
+    id: *const core::ffi::c_char,
+    registration: usize,
+}
+
+#[cfg(target_arch = "m68k")]
+impl HandlerContext {
+    const fn new() -> Self {
+        Self {
+            mailbox: core::ptr::null_mut(),
+            id: core::ptr::null(),
+            registration: 0,
+        }
+    }
+}
+
+#[cfg(target_arch = "m68k")]
+static mut EVENT_MAILBOX: EventMailbox = EventMailbox::new();
+#[cfg(target_arch = "m68k")]
+static mut HANDLER_CONTEXTS: [HandlerContext; EVENT_HANDLER_CAPACITY] =
+    [HandlerContext::new(); EVENT_HANDLER_CAPACITY];
+
+#[cfg(target_arch = "m68k")]
+impl EventMailbox {
+    const fn new() -> Self {
+        Self {
+            event: PendingEvent::new(),
+        }
+    }
+
+    fn push(&mut self, event: PendingEvent) -> bool {
+        let ready = unsafe { core::ptr::read_volatile(core::ptr::addr_of!(self.event.ready)) };
+        if ready {
+            return false;
+        }
+        unsafe {
+            core::ptr::write_volatile(core::ptr::addr_of_mut!(self.event), event);
+        }
+        true
+    }
+
+    fn dispatch_all<S: EventSink>(&mut self, sink: &mut S) -> bool {
+        let ready = unsafe { core::ptr::read_volatile(core::ptr::addr_of!(self.event.ready)) };
+        if !ready {
+            return false;
+        }
+        self.event.dispatch(sink)
+    }
+}
+
+#[cfg(target_arch = "m68k")]
 impl PendingEvent {
     const fn new() -> Self {
         Self {
             ready: false,
             event_type: 0,
+            registration: 0,
             id: [0; EVENT_ID_CAPACITY],
             id_len: 0,
             value: [0; EVENT_VALUE_CAPACITY],
@@ -271,11 +359,22 @@ impl PendingEvent {
             return false;
         }
         self.ready = false;
-        let Ok(id) = CStr::from_bytes_with_nul(&self.id[..=self.id_len]) else {
+        if self.id_len >= self.id.len() {
             return false;
+        }
+        let id = unsafe {
+            CStr::from_bytes_with_nul_unchecked(core::slice::from_raw_parts(
+                self.id.as_ptr(),
+                self.id_len + 1,
+            ))
         };
-        let value = if self.has_value {
-            CStr::from_bytes_with_nul(&self.value[..=self.value_len]).ok()
+        let value = if self.has_value && self.value_len < self.value.len() {
+            Some(unsafe {
+                CStr::from_bytes_with_nul_unchecked(core::slice::from_raw_parts(
+                    self.value.as_ptr(),
+                    self.value_len + 1,
+                ))
+            })
         } else {
             None
         };
@@ -287,11 +386,11 @@ impl PendingEvent {
         sink.on_event(Event {
             kind,
             id,
+            registration: self.registration,
             value,
             index: self.index,
             checked: self.checked,
-        });
-        true
+        })
     }
 }
 
@@ -300,16 +399,8 @@ fn copy_event_text(source: *const core::ffi::c_char, target: &mut [u8]) -> Optio
     if source.is_null() || target.is_empty() {
         return None;
     }
-    for index in 0..target.len() - 1 {
-        let byte = unsafe { source.add(index).read() } as u8;
-        target[index] = byte;
-        if byte == 0 {
-            return Some(index);
-        }
-    }
-    let last = target.len() - 1;
-    target[last] = 0;
-    Some(last)
+    let length = unsafe { gf_copy_cstr_bounded(source, target.as_mut_ptr(), target.len()) };
+    (length != usize::MAX).then_some(length)
 }
 
 /// Fixed callback entry point used by GFOpenLayout.
@@ -325,21 +416,35 @@ unsafe extern "C" fn gfopenlayout_event_trampoline(
     event: *const RawEvent,
     userdata: *mut c_void,
 ) {
-    let (Some(raw), Some(pending)) = (unsafe { event.as_ref() }, unsafe {
-        userdata.cast::<PendingEvent>().as_mut()
-    }) else {
+    let Some(context) = (unsafe { userdata.cast::<HandlerContext>().as_ref() }) else {
         return;
     };
-    let Some(id_len) = copy_event_text(raw.id, &mut pending.id) else {
+    let Some(mailbox) = (unsafe { context.mailbox.as_mut() }) else {
+        return;
+    };
+    let Some(raw) = (unsafe { event.as_ref() }) else {
+        return;
+    };
+    let mut pending = PendingEvent::new();
+    let mut id_source = context.id;
+    if id_source.is_null() {
+        id_source = raw.id;
+    }
+    let Some(id_len) = copy_event_text(id_source, &mut pending.id) else {
         return;
     };
     pending.id_len = id_len;
-    pending.event_type = raw.event_type;
+    pending.registration = context.registration;
+    pending.event_type = if context.id.is_null() {
+        raw.event_type
+    } else {
+        OLUI_CLICK
+    };
     pending.has_value = false;
     // A click does not carry a value.  Some older GFOpenLayout builds leave
     // that field unspecified for value-less events, so only dereference it
     // for the change events whose API contract actually supplies text.
-    if raw.event_type == OLUI_CHANGE {
+    if pending.event_type == OLUI_CHANGE {
         if let Some(value_len) = copy_event_text(raw.value, &mut pending.value) {
             pending.value_len = value_len;
             pending.has_value = true;
@@ -348,6 +453,7 @@ unsafe extern "C" fn gfopenlayout_event_trampoline(
     pending.index = raw.index;
     pending.checked = raw.checked != 0;
     pending.ready = true;
+    let _ = mailbox.push(pending);
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -507,11 +613,13 @@ impl<'runtime> Window<'runtime> {
     /// Run the Intuition event loop until the close gadget is selected.
     pub fn run(&mut self, runtime: &Runtime) {
         let mut closed = false;
+        let signal = unsafe { gf_window_signal_mask(self.window.as_ptr()) };
         while !closed {
-            // A one-tick yield keeps this compatible with Exec variants whose
-            // WaitPort/Wait signal path does not wake a foreign-language task
-            // reliably. The queue is still drained fully on every pass.
-            runtime.delay(1);
+            if signal == 0 {
+                runtime.delay(1);
+            } else {
+                runtime.wait(signal);
+            }
             loop {
                 let message = unsafe { gf_window_get_message(self.window.as_ptr()) };
                 if message.is_null() {
@@ -535,23 +643,50 @@ impl<'runtime> Window<'runtime> {
     /// The window is consumed so GFOpenLayout cannot retain a callback to a sink
     /// after the sink's borrow ends.
     pub fn run_with<S: EventSink>(self, runtime: &Runtime, sink: &mut S) -> bool {
-        let mut pending = PendingEvent::new();
-        let registered = unsafe {
-            self.layout.call_a0_a1_a2_a3_d0(
-                LVO_OLUI_ON,
-                self.ui.as_ptr(),
-                core::ptr::null_mut(),
-                gfopenlayout_event_trampoline as *const () as *mut c_void,
-                (&mut pending as *mut PendingEvent).cast(),
-                OLUI_ANY_EVENT as u32,
-            )
-        };
-        if registered == 0 {
+        // GFOpenLayout retains its userdata until the window closes. AmigaOS
+        // delivers this process's window events serially, so a fixed mailbox
+        // keeps both the callback and the polling loop on one stable address.
+        let pending = core::ptr::addr_of_mut!(EVENT_MAILBOX);
+        unsafe {
+            pending.write(EventMailbox::new());
+        }
+        let click_ids = sink.click_ids();
+        if click_ids.len() > EVENT_HANDLER_CAPACITY {
             return false;
         }
+        let registrations = click_ids.len().max(1);
+        for index in 0..registrations {
+            let id = click_ids
+                .get(index)
+                .map_or(core::ptr::null(), |id| id.as_ptr());
+            let context = unsafe { core::ptr::addr_of_mut!(HANDLER_CONTEXTS[index]) };
+            unsafe {
+                context.write(HandlerContext {
+                    mailbox: pending,
+                    id,
+                    registration: index,
+                });
+            }
+            let registered = unsafe {
+                gf_openlayout_register_event_handler(
+                    self.layout.raw_base(),
+                    self.ui.as_ptr(),
+                    id,
+                    context.cast(),
+                )
+            };
+            if registered == 0 {
+                return false;
+            }
+        }
         let mut closed = false;
+        let signal = unsafe { gf_window_signal_mask(self.window.as_ptr()) };
         while !closed {
-            runtime.delay(1);
+            if signal == 0 {
+                runtime.delay(1);
+            } else {
+                runtime.wait(signal);
+            }
             let mut refresh = false;
             loop {
                 let message = unsafe { gf_window_get_message(self.window.as_ptr()) };
@@ -563,24 +698,28 @@ impl<'runtime> Window<'runtime> {
                         .call_a0_a1(LVO_OLUI_AMIGA_EVENT, self.glue.as_ptr(), message)
                 };
                 unsafe { gf_reply_message(message) };
-                let dispatched = pending.dispatch(sink);
-                refresh |= dispatched;
-                if dispatched {
-                    if let Some(title) = sink.window_title() {
-                        unsafe {
-                            self.intuition.call_a0_a1_a2_a3_d0(
-                                -276,
-                                self.window.as_ptr(),
-                                title.as_ptr().cast_mut().cast(),
-                                usize::MAX as *mut c_void,
-                                core::ptr::null_mut(),
-                                0,
-                            );
-                        }
-                    }
-                }
                 if result == OLUI_AMIGA_CLOSE {
                     closed = true;
+                }
+                // GFOpenLayout invokes the registered callback synchronously
+                // from OLUI_AmigaEvent. Drain the single bounded slot after
+                // every replied message so a later message in the same batch
+                // cannot overwrite or discard the preceding event. Application
+                // UI mutation remains deferred until the batch is complete.
+                refresh |= unsafe { (&mut *pending).dispatch_all(sink) };
+            }
+            if refresh {
+                if let Some(title) = sink.window_title() {
+                    unsafe {
+                        self.intuition.call_a0_a1_a2_a3_d0(
+                            -276,
+                            self.window.as_ptr(),
+                            title.as_ptr().cast_mut().cast(),
+                            usize::MAX as *mut c_void,
+                            core::ptr::null_mut(),
+                            0,
+                        );
+                    }
                 }
             }
             if refresh {
@@ -599,9 +738,13 @@ impl<'runtime> Window<'runtime> {
                             .call_a0(LVO_OLUI_AMIGA_LAYOUT, self.glue.as_ptr());
                     }
                 }
-                unsafe {
-                    self.layout.call_a0(LVO_OLUI_AMIGA_DRAW, self.glue.as_ptr());
-                }
+            }
+            // Match GFOpenLayout's native Amiga loop contract: every drained
+            // Intuition batch is followed by a draw. Besides presenting damage,
+            // this lets the library finish the press/focus state that a later
+            // mouse-up message completes.
+            unsafe {
+                self.layout.call_a0(LVO_OLUI_AMIGA_DRAW, self.glue.as_ptr());
             }
         }
         true

@@ -14,33 +14,36 @@
 gf_lib_call0:
         move.l  %a6,-(%sp)
         move.l  8(%sp),%a6
-        adda.l  12(%sp),%a6
-        jsr     (%a6)
+        move.l  %a6,%a0
+        adda.l  12(%sp),%a0
+        jsr     (%a0)
         move.l  (%sp)+,%a6
         rts
 
         .globl  gf_lib_call_d0_d1_a0_a1
 gf_lib_call_d0_d1_a0_a1:
-        move.l  %a6,-(%sp)
-        move.l  8(%sp),%a6
-        adda.l  12(%sp),%a6
-        move.l  16(%sp),%d0
-        move.l  20(%sp),%d1
-        move.l  24(%sp),%a0
-        move.l  28(%sp),%a1
-        jsr     (%a6)
-        move.l  (%sp)+,%a6
+        movem.l %a2/%a6,-(%sp)
+        move.l  12(%sp),%a6
+        move.l  %a6,%a2
+        adda.l  16(%sp),%a2
+        move.l  20(%sp),%d0
+        move.l  24(%sp),%d1
+        move.l  28(%sp),%a0
+        move.l  32(%sp),%a1
+        jsr     (%a2)
+        movem.l (%sp)+,%a2/%a6
         rts
 
         .globl  gf_lib_call_d0_d1_d2
 gf_lib_call_d0_d1_d2:
         movem.l %d2/%a6,-(%sp)
         move.l  12(%sp),%a6
-        adda.l  16(%sp),%a6
+        move.l  %a6,%a0
+        adda.l  16(%sp),%a0
         move.l  20(%sp),%d0
         move.l  24(%sp),%d1
         move.l  28(%sp),%d2
-        jsr     (%a6)
+        jsr     (%a0)
         movem.l (%sp)+,%d2/%a6
         rts
 
@@ -48,9 +51,10 @@ gf_lib_call_d0_d1_d2:
 gf_lib_call_a0:
         move.l  %a6,-(%sp)
         move.l  8(%sp),%a6
-        adda.l  12(%sp),%a6
+        move.l  %a6,%a1
+        adda.l  12(%sp),%a1
         move.l  16(%sp),%a0
-        jsr     (%a6)
+        jsr     (%a1)
         move.l  (%sp)+,%a6
         rts
 
@@ -58,46 +62,50 @@ gf_lib_call_a0:
 gf_lib_call_a0_d0:
         move.l  %a6,-(%sp)
         move.l  8(%sp),%a6
-        adda.l  12(%sp),%a6
+        move.l  %a6,%a1
+        adda.l  12(%sp),%a1
         move.l  16(%sp),%a0
         move.l  20(%sp),%d0
-        jsr     (%a6)
+        jsr     (%a1)
         move.l  (%sp)+,%a6
         rts
 
         .globl  gf_lib_call_a0_a1_d0
 gf_lib_call_a0_a1_d0:
-        move.l  %a6,-(%sp)
-        move.l  8(%sp),%a6
-        adda.l  12(%sp),%a6
-        move.l  16(%sp),%a0
-        move.l  20(%sp),%a1
-        move.l  24(%sp),%d0
-        jsr     (%a6)
-        move.l  (%sp)+,%a6
+        movem.l %a2/%a6,-(%sp)
+        move.l  12(%sp),%a6
+        move.l  %a6,%a2
+        adda.l  16(%sp),%a2
+        move.l  20(%sp),%a0
+        move.l  24(%sp),%a1
+        move.l  28(%sp),%d0
+        jsr     (%a2)
+        movem.l (%sp)+,%a2/%a6
         rts
 
         .globl  gf_lib_call_a0_a1_a2_a3_d0
 gf_lib_call_a0_a1_a2_a3_d0:
-        movem.l %a2-%a3/%a6,-(%sp)
-        move.l  16(%sp),%a6
-        adda.l  20(%sp),%a6
-        move.l  24(%sp),%a0
-        move.l  28(%sp),%a1
-        move.l  32(%sp),%a2
-        move.l  36(%sp),%a3
-        move.l  40(%sp),%d0
-        jsr     (%a6)
-        movem.l (%sp)+,%a2-%a3/%a6
+        movem.l %a2-%a4/%a6,-(%sp)
+        move.l  20(%sp),%a6
+        move.l  %a6,%a4
+        adda.l  24(%sp),%a4
+        move.l  28(%sp),%a0
+        move.l  32(%sp),%a1
+        move.l  36(%sp),%a2
+        move.l  40(%sp),%a3
+        move.l  44(%sp),%d0
+        jsr     (%a4)
+        movem.l (%sp)+,%a2-%a4/%a6
         rts
 
         .globl  gf_lib_call_a1
 gf_lib_call_a1:
         move.l  %a6,-(%sp)
         move.l  8(%sp),%a6
-        adda.l  12(%sp),%a6
+        move.l  %a6,%a0
+        adda.l  12(%sp),%a0
         move.l  16(%sp),%a1
-        jsr     (%a6)
+        jsr     (%a0)
         move.l  (%sp)+,%a6
         rts
 
@@ -105,11 +113,12 @@ gf_lib_call_a1:
 gf_dos_call_d1_d2_d3:
         movem.l %d2-%d3/%a6,-(%sp)
         move.l  16(%sp),%a6
-        adda.l  20(%sp),%a6
+        move.l  %a6,%a0
+        adda.l  20(%sp),%a0
         move.l  24(%sp),%d1
         move.l  28(%sp),%d2
         move.l  32(%sp),%d3
-        jsr     (%a6)
+        jsr     (%a0)
         movem.l (%sp)+,%d2-%d3/%a6
         rts
 
@@ -117,12 +126,13 @@ gf_dos_call_d1_d2_d3:
 gf_dos_call_d1_d2_d3_d4:
         movem.l %d2-%d4/%a6,-(%sp)
         move.l  20(%sp),%a6
-        adda.l  24(%sp),%a6
+        move.l  %a6,%a0
+        adda.l  24(%sp),%a0
         move.l  28(%sp),%d1
         move.l  32(%sp),%d2
         move.l  36(%sp),%d3
         move.l  40(%sp),%d4
-        jsr     (%a6)
+        jsr     (%a0)
         movem.l (%sp)+,%d2-%d4/%a6
         rts
 
