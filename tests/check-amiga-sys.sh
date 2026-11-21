@@ -35,8 +35,11 @@ do
 done
 
 "$objdump" -dr "$tmp/amiga_calls.o" > "$tmp/disassembly.txt"
-# GNU objdump prints architectural A6 as its conventional alias, FP.
-grep -Eq 'jsr[[:space:]]+%fp@' "$tmp/disassembly.txt"
+# Every library-vector trampoline must make an indirect call through an
+# address register.  The implementation deliberately copies A6 and adds the
+# vector offset in a scratch address register before the call, so pin the ABI
+# property without requiring one particular scratch register.
+grep -Eq 'jsr[[:space:]]+%a[0-4]@' "$tmp/disassembly.txt"
 grep -Eq 'moveml[[:space:]]+%d2-%d4/%fp' "$tmp/disassembly.txt"
 
 if [ "${RUN_M68K_RUST:-0}" = 1 ]; then
