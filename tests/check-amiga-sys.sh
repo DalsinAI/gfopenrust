@@ -26,6 +26,8 @@ for symbol in \
     gf_lib_call_a0 \
     gf_lib_call_a0_d0 \
     gf_lib_call_a0_a1_d0 \
+    gf_lib_call_a0_a1_a2_a3_d0 \
+    gf_lib_call_a1 \
     gf_dos_call_d1_d2_d3 \
     gf_dos_call_d1_d2_d3_d4
 do
