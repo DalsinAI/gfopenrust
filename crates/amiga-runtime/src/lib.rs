@@ -3,8 +3,8 @@
 //!
 //! The startup archive translates AmigaDOS's D0/A0 entry state into the
 //! stack ABI expected by `gf_amiga_main`.  [`init`] opens dos.library and
-//! creates the Exec pool used by the global allocator.  All owned values must
-//! be dropped before [`shutdown`] deletes that pool.
+//! installs the Exec services used by the global allocator. All owned values
+//! must be dropped before [`shutdown`] closes the runtime libraries.
 
 #![no_std]
 #![cfg_attr(target_arch = "m68k", feature(asm_experimental_arch))]
@@ -13,7 +13,7 @@
 core::arch::global_asm!(include_str!("amiga_start.S"));
 
 #[cfg(target_arch = "m68k")]
-use amiga_sys::{exec, APtr, LibraryBase, MEMF_ANY};
+use amiga_sys::{exec, APtr, LibraryBase, MEMF_PUBLIC};
 #[cfg(target_arch = "m68k")]
 use core::alloc::GlobalAlloc;
 #[cfg(any(target_arch = "m68k", test))]
@@ -43,11 +43,20 @@ fn allocation_size(layout: Layout) -> Option<(usize, bool)> {
 }
 
 #[cfg(target_arch = "m68k")]
-static mut SYS_BASE: APtr = core::ptr::null_mut();
+struct RuntimeState {
+    sys_base: APtr,
+    dos_base: APtr,
+    last_failed_alloc_size: u32,
+    last_alloc_had_sys_base: bool,
+}
+
 #[cfg(target_arch = "m68k")]
-static mut DOS_BASE: APtr = core::ptr::null_mut();
-#[cfg(target_arch = "m68k")]
-static mut POOL: APtr = core::ptr::null_mut();
+static mut STATE: RuntimeState = RuntimeState {
+    sys_base: core::ptr::null_mut(),
+    dos_base: core::ptr::null_mut(),
+    last_failed_alloc_size: 0,
+    last_alloc_had_sys_base: false,
+};
 
 #[cfg(any(target_arch = "m68k", test))]
 unsafe fn copy_bytes(destination: *mut u8, source: *const u8, length: usize) {
@@ -101,47 +110,41 @@ pub unsafe extern "C" fn memset(
     destination
 }
 
-/// Initialise the program's DOS base and allocation pool.
+/// Initialise the program's DOS base.
 ///
 /// # Safety
 /// Call once, before any allocation or DOS call, from the program's initial
 /// task.  No other task may use this runtime while it is initialising.
 #[cfg(target_arch = "m68k")]
 unsafe fn init() -> bool {
-    if !POOL.is_null() {
+    if !STATE.sys_base.is_null() {
         return true;
     }
 
     let sys = exec::sys_base();
-    SYS_BASE = sys.as_ptr();
-    DOS_BASE = exec::open_library(sys, b"dos.library\0".as_ptr().cast(), 36)
+    STATE.sys_base = sys.as_ptr();
+    STATE.dos_base = exec::open_library(sys, b"dos.library\0".as_ptr().cast(), 36)
         .map_or(core::ptr::null_mut(), |dos| dos.as_ptr());
-
-    // Use the universally available AllocMem path. CreatePool varies across
-    // compatible Exec implementations; it can be re-enabled as an optional
-    // optimisation once native probes cover every supported kernel.
-    POOL = core::ptr::null_mut();
+    if STATE.dos_base.is_null() {
+        STATE.sys_base = core::ptr::null_mut();
+        return false;
+    }
     true
 }
 
-/// Delete the allocation pool and close dos.library.
+/// Close dos.library and clear the runtime state.
 ///
 /// # Safety
 /// Every Rust value that could own an allocation must be dropped first.  No
 /// other task may be using this runtime.
 #[cfg(target_arch = "m68k")]
 unsafe fn shutdown() {
-    let Some(sys) = LibraryBase::from_raw(SYS_BASE) else {
+    let Some(sys) = LibraryBase::from_raw(STATE.sys_base) else {
         return;
     };
-    let pool = POOL;
-    let dos = DOS_BASE;
-    POOL = core::ptr::null_mut();
-    DOS_BASE = core::ptr::null_mut();
-    SYS_BASE = core::ptr::null_mut();
-    if !pool.is_null() {
-        exec::delete_pool(sys, pool);
-    }
+    let dos = STATE.dos_base;
+    STATE.dos_base = core::ptr::null_mut();
+    STATE.sys_base = core::ptr::null_mut();
     if let Some(dos) = LibraryBase::from_raw(dos) {
         exec::close_library(sys, dos);
     }
@@ -154,7 +157,7 @@ unsafe fn shutdown() {
 /// NUL-terminated byte string.
 #[cfg(target_arch = "m68k")]
 unsafe fn put_str(string: *const u8) -> i32 {
-    let Some(dos) = LibraryBase::from_raw(DOS_BASE) else {
+    let Some(dos) = LibraryBase::from_raw(STATE.dos_base) else {
         return -1;
     };
     amiga_sys::dos::put_str(dos, string.cast())
@@ -163,10 +166,22 @@ unsafe fn put_str(string: *const u8) -> i32 {
 /// The live, single-task AmigaOS runtime.
 ///
 /// Applications receive this only inside [`run`], so their allocations are
-/// dropped before the underlying Exec pool is deleted.
+/// dropped before the underlying DOS library is closed.
 #[cfg(target_arch = "m68k")]
 pub struct Runtime {
     _private: (),
+}
+
+/// A bounded AmigaDOS file operation failed.
+#[cfg(target_arch = "m68k")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FileError {
+    LengthOutOfRange,
+    OpenFailed,
+    ReadFailed,
+    WriteFailed,
+    CloseFailed,
+    BufferTooSmall,
 }
 
 #[cfg(target_arch = "m68k")]
@@ -186,10 +201,76 @@ impl Runtime {
 
     /// Yield this task for a number of AmigaDOS ticks (normally 1/50 second).
     pub fn delay(&self, ticks: u32) {
-        let Some(dos) = (unsafe { LibraryBase::from_raw(DOS_BASE) }) else {
+        let Some(dos) = (unsafe { LibraryBase::from_raw(STATE.dos_base) }) else {
             return;
         };
         unsafe { amiga_sys::dos::delay(dos, ticks) };
+    }
+
+    /// Return the most recent allocation request and whether ExecBase was
+    /// available when it was made.  This is intended for native fault reports;
+    /// a zero size means the allocator was not reached.
+    pub fn allocation_diagnostic(&self) -> (u32, bool) {
+        unsafe { (STATE.last_failed_alloc_size, STATE.last_alloc_had_sys_base) }
+    }
+
+    /// Replace a file with exactly `bytes`, without allocating.
+    pub fn write_file(&self, path: &CStr, bytes: &[u8]) -> Result<(), FileError> {
+        const MODE_NEWFILE: i32 = 1006;
+
+        let dos = unsafe { LibraryBase::from_raw(STATE.dos_base) }.ok_or(FileError::OpenFailed)?;
+        let length = u32::try_from(bytes.len()).map_err(|_| FileError::LengthOutOfRange)?;
+        let file = unsafe { amiga_sys::dos::open(dos, path.as_ptr().cast(), MODE_NEWFILE) };
+        if file == 0 {
+            return Err(FileError::OpenFailed);
+        }
+        let written = unsafe { amiga_sys::dos::write(dos, file, bytes.as_ptr().cast(), length) };
+        let closed = unsafe { amiga_sys::dos::close(dos, file) };
+        if written != length as i32 {
+            return Err(FileError::WriteFailed);
+        }
+        if closed == 0 {
+            return Err(FileError::CloseFailed);
+        }
+        Ok(())
+    }
+
+    /// Read one complete file into caller-owned bounded storage.
+    pub fn read_file<'buffer>(
+        &self,
+        path: &CStr,
+        buffer: &'buffer mut [u8],
+    ) -> Result<&'buffer [u8], FileError> {
+        const MODE_OLDFILE: i32 = 1005;
+
+        let dos = unsafe { LibraryBase::from_raw(STATE.dos_base) }.ok_or(FileError::OpenFailed)?;
+        let length = u32::try_from(buffer.len()).map_err(|_| FileError::LengthOutOfRange)?;
+        let file = unsafe { amiga_sys::dos::open(dos, path.as_ptr().cast(), MODE_OLDFILE) };
+        if file == 0 {
+            return Err(FileError::OpenFailed);
+        }
+        let read = unsafe { amiga_sys::dos::read(dos, file, buffer.as_mut_ptr().cast(), length) };
+        if read < 0 {
+            let _ = unsafe { amiga_sys::dos::close(dos, file) };
+            return Err(FileError::ReadFailed);
+        }
+        let mut extra = 0_u8;
+        let overflow = if read as u32 == length {
+            unsafe { amiga_sys::dos::read(dos, file, (&mut extra as *mut u8).cast(), 1) }
+        } else {
+            0
+        };
+        let closed = unsafe { amiga_sys::dos::close(dos, file) };
+        if overflow < 0 {
+            return Err(FileError::ReadFailed);
+        }
+        if closed == 0 {
+            return Err(FileError::CloseFailed);
+        }
+        if overflow != 0 {
+            return Err(FileError::BufferTooSmall);
+        }
+        Ok(&buffer[..read as usize])
     }
 
     /// Open an Amiga shared library for no longer than this runtime callback.
@@ -198,7 +279,7 @@ impl Runtime {
         name: &CStr,
         minimum_version: u32,
     ) -> Option<OpenLibrary<'runtime>> {
-        let sys = unsafe { LibraryBase::from_raw(SYS_BASE) }?;
+        let sys = unsafe { LibraryBase::from_raw(STATE.sys_base) }?;
         let base = unsafe { exec::open_library(sys, name.as_ptr().cast(), minimum_version) }?;
         Some(OpenLibrary {
             sys,
@@ -209,7 +290,7 @@ impl Runtime {
 
     /// Sleep until at least one signal in `signals` is received.
     pub fn wait(&self, signals: u32) -> u32 {
-        let Some(sys) = (unsafe { LibraryBase::from_raw(SYS_BASE) }) else {
+        let Some(sys) = (unsafe { LibraryBase::from_raw(STATE.sys_base) }) else {
             return 0;
         };
         unsafe { exec::wait(sys, signals) }
@@ -220,7 +301,7 @@ impl Runtime {
     /// # Safety
     /// `port` must point to a live `MsgPort` owned by this task.
     pub unsafe fn get_message(&self, port: *mut c_void) -> *mut c_void {
-        let Some(sys) = LibraryBase::from_raw(SYS_BASE) else {
+        let Some(sys) = LibraryBase::from_raw(STATE.sys_base) else {
             return core::ptr::null_mut();
         };
         exec::get_msg(sys, port)
@@ -232,7 +313,7 @@ impl Runtime {
     /// `message` must be a message removed from one of this task's ports and
     /// must not be accessed again after this call.
     pub unsafe fn reply_message(&self, message: *mut c_void) {
-        let Some(sys) = LibraryBase::from_raw(SYS_BASE) else {
+        let Some(sys) = LibraryBase::from_raw(STATE.sys_base) else {
             return;
         };
         exec::reply_msg(sys, message);
@@ -243,7 +324,7 @@ impl Runtime {
     /// # Safety
     /// `port` must point to a live `MsgPort` owned by this task.
     pub unsafe fn wait_port(&self, port: *mut c_void) -> *mut c_void {
-        let Some(sys) = LibraryBase::from_raw(SYS_BASE) else {
+        let Some(sys) = LibraryBase::from_raw(STATE.sys_base) else {
             return core::ptr::null_mut();
         };
         if port.is_null() {
@@ -339,9 +420,9 @@ impl Drop for Runtime {
 
 /// Initialise AmigaOS services, run `application`, then release them.
 ///
-/// A failed DOS or pool initialisation returns AmigaDOS failure code 20.
+/// A failed DOS initialisation returns AmigaDOS failure code 20.
 /// The callback returns only an integer, so values allocated inside it are
-/// dropped before the runtime and its pool.
+/// dropped before the runtime.
 #[cfg(target_arch = "m68k")]
 pub fn run(application: impl FnOnce(&Runtime) -> i32) -> i32 {
     let Some(runtime) = Runtime::start() else {
@@ -361,16 +442,14 @@ unsafe impl GlobalAlloc for ExecPoolAllocator {
         let Ok(size32) = u32::try_from(size) else {
             return core::ptr::null_mut();
         };
-        let Some(sys) = LibraryBase::from_raw(SYS_BASE) else {
-            return core::ptr::null_mut();
-        };
-        let raw = if POOL.is_null() {
-            exec::alloc_mem(sys, size32, MEMF_ANY)
-        } else {
-            exec::alloc_pooled(sys, POOL, size32)
+        let sys = exec::sys_base();
+        STATE.last_alloc_had_sys_base = true;
+        let raw = exec::alloc_mem(sys, size32, MEMF_PUBLIC).cast::<u8>();
+        if raw.is_null() {
+            STATE.last_failed_alloc_size = size32;
+            return raw;
         }
-        .cast::<u8>();
-        if raw.is_null() || !has_header {
+        if !has_header {
             return raw;
         }
         let Some(address) = (raw as usize)
@@ -378,11 +457,7 @@ unsafe impl GlobalAlloc for ExecPoolAllocator {
             .and_then(|value| value.checked_add(layout.align() - 1))
             .map(|value| value & !(layout.align() - 1))
         else {
-            if POOL.is_null() {
-                exec::free_mem(sys, raw.cast(), size32);
-            } else {
-                exec::free_pooled(sys, POOL, raw.cast(), size32);
-            }
+            exec::free_mem(sys, raw.cast(), size32);
             return core::ptr::null_mut();
         };
         ((address - HEADER_SIZE) as *mut usize).write(raw as usize);
@@ -396,9 +471,7 @@ unsafe impl GlobalAlloc for ExecPoolAllocator {
         let Ok(size32) = u32::try_from(size) else {
             return;
         };
-        let Some(sys) = LibraryBase::from_raw(SYS_BASE) else {
-            return;
-        };
+        let sys = exec::sys_base();
         if pointer.is_null() {
             return;
         }
@@ -407,11 +480,7 @@ unsafe impl GlobalAlloc for ExecPoolAllocator {
         } else {
             pointer
         };
-        if POOL.is_null() {
-            exec::free_mem(sys, raw.cast(), size32);
-        } else {
-            exec::free_pooled(sys, POOL, raw.cast(), size32);
-        }
+        exec::free_mem(sys, raw.cast(), size32);
     }
 }
 
@@ -427,7 +496,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn small_allocations_use_the_pool_block_directly() {
+    fn small_allocations_use_the_exec_block_directly() {
         let layout = Layout::from_size_align(17, 8).unwrap();
         assert_eq!(allocation_size(layout), Some((17, false)));
     }

@@ -34,6 +34,29 @@ gf_lib_call_d0_d1_a0_a1:
         movem.l (%sp)+,%a2/%a6
         rts
 
+/* Exec memory calls use dedicated stubs.  Besides matching the official C
+ * inline sequence exactly, this avoids depending on a computed jump through
+ * a negative library-vector address in the allocator's hottest path. */
+        .globl  gf_exec_alloc_mem
+gf_exec_alloc_mem:
+        move.l  %a6,-(%sp)
+        move.l  8(%sp),%d0
+        move.l  12(%sp),%d1
+        move.l  4,%a6
+        .short  0x4eae,0xff3a
+        move.l  (%sp)+,%a6
+        rts
+
+        .globl  gf_exec_free_mem
+gf_exec_free_mem:
+        move.l  %a6,-(%sp)
+        move.l  8(%sp),%a1
+        move.l  12(%sp),%d0
+        move.l  4,%a6
+        .short  0x4eae,0xff2e
+        move.l  (%sp)+,%a6
+        rts
+
         .globl  gf_lib_call_d0_d1_d2
 gf_lib_call_d0_d1_d2:
         movem.l %d2/%a6,-(%sp)

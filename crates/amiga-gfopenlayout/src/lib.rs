@@ -610,6 +610,20 @@ impl<'runtime> Window<'runtime> {
         })
     }
 
+    /// Change the native window title without rebuilding the layout tree.
+    pub fn set_title(&self, title: &CStr) {
+        unsafe {
+            self.intuition.call_a0_a1_a2_a3_d0(
+                -276,
+                self.window.as_ptr(),
+                title.as_ptr().cast_mut().cast(),
+                usize::MAX as *mut c_void,
+                core::ptr::null_mut(),
+                0,
+            );
+        }
+    }
+
     /// Run the Intuition event loop until the close gadget is selected.
     pub fn run(&mut self, runtime: &Runtime) {
         let mut closed = false;
@@ -710,16 +724,7 @@ impl<'runtime> Window<'runtime> {
             }
             if refresh {
                 if let Some(title) = sink.window_title() {
-                    unsafe {
-                        self.intuition.call_a0_a1_a2_a3_d0(
-                            -276,
-                            self.window.as_ptr(),
-                            title.as_ptr().cast_mut().cast(),
-                            usize::MAX as *mut c_void,
-                            core::ptr::null_mut(),
-                            0,
-                        );
-                    }
+                    self.set_title(title);
                 }
             }
             if refresh {

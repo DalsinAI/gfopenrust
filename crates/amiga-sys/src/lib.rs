@@ -97,6 +97,8 @@ impl LibraryBase {
 
 #[cfg(target_arch = "m68k")]
 extern "C" {
+    fn gf_exec_alloc_mem(size: ULong, flags: ULong) -> ULong;
+    fn gf_exec_free_mem(memory: APtr, size: ULong);
     fn gf_lib_call0(base: APtr, lvo: Long) -> ULong;
     fn gf_lib_call_d0_d1_a0_a1(
         base: APtr,
@@ -293,26 +295,14 @@ pub mod exec {
 
     #[cfg(target_arch = "m68k")]
     pub unsafe fn alloc_mem(sys_base: LibraryBase, size: ULong, flags: ULong) -> APtr {
-        lib_call4(
-            sys_base,
-            LVO_ALLOC_MEM,
-            size,
-            flags,
-            core::ptr::null_mut(),
-            core::ptr::null_mut(),
-        ) as usize as APtr
+        let _ = sys_base;
+        gf_exec_alloc_mem(size, flags) as usize as APtr
     }
 
     #[cfg(target_arch = "m68k")]
     pub unsafe fn free_mem(sys_base: LibraryBase, memory: APtr, size: ULong) {
-        lib_call4(
-            sys_base,
-            LVO_FREE_MEM,
-            size,
-            0,
-            core::ptr::null_mut(),
-            memory,
-        );
+        let _ = sys_base;
+        gf_exec_free_mem(memory, size);
     }
 
     #[cfg(target_arch = "m68k")]
