@@ -46,6 +46,6 @@ This is deliberately only plan step 3.  The next slice adds the
 `m68k-amigaos` target, startup and an Exec-pool global allocator; then `std`
 can implement files, environment, time and tasks on these calls.
 
-The cross-build proves the Rust objects and the five ABI trampolines coexist
+The cross-build proves the Rust objects and the ten ABI trampolines coexist
 in the target archive.  It is not a substitute for running a linked program
 on AmigaOS.  Step 3 stays in progress until the native call probe passes.

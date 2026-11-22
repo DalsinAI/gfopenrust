@@ -26,6 +26,8 @@ for symbol in \
     gf_lib_call_a0 \
     gf_lib_call_a0_d0 \
     gf_lib_call_a0_a1_d0 \
+    gf_lib_call_a0_a1_a2_a3_d0 \
+    gf_lib_call_a1 \
     gf_dos_call_d1_d2_d3 \
     gf_dos_call_d1_d2_d3_d4
 do
@@ -33,8 +35,11 @@ do
 done
 
 "$objdump" -dr "$tmp/amiga_calls.o" > "$tmp/disassembly.txt"
-# GNU objdump prints architectural A6 as its conventional alias, FP.
-grep -Eq 'jsr[[:space:]]+%fp@' "$tmp/disassembly.txt"
+# Every library-vector trampoline must make an indirect call through an
+# address register.  The implementation deliberately copies A6 and adds the
+# vector offset in a scratch address register before the call, so pin the ABI
+# property without requiring one particular scratch register.
+grep -Eq 'jsr[[:space:]]+%a[0-4]@' "$tmp/disassembly.txt"
 grep -Eq 'moveml[[:space:]]+%d2-%d4/%fp' "$tmp/disassembly.txt"
 
 if [ "${RUN_M68K_RUST:-0}" = 1 ]; then

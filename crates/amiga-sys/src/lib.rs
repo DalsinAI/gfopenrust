@@ -110,6 +110,16 @@ extern "C" {
     fn gf_lib_call_a0(base: APtr, lvo: Long, a0: APtr) -> ULong;
     fn gf_lib_call_a0_d0(base: APtr, lvo: Long, a0: APtr, d0: ULong) -> ULong;
     fn gf_lib_call_a0_a1_d0(base: APtr, lvo: Long, a0: APtr, a1: APtr, d0: ULong) -> ULong;
+    fn gf_lib_call_a0_a1_a2_a3_d0(
+        base: APtr,
+        lvo: Long,
+        a0: APtr,
+        a1: APtr,
+        a2: APtr,
+        a3: APtr,
+        d0: ULong,
+    ) -> ULong;
+    fn gf_lib_call_a1(base: APtr, lvo: Long, a1: APtr) -> ULong;
     fn gf_dos_call_d1_d2_d3(base: APtr, lvo: Long, d1: ULong, d2: ULong, d3: ULong) -> ULong;
     fn gf_dos_call_d1_d2_d3_d4(
         base: APtr,
@@ -153,8 +163,24 @@ unsafe fn lib_call3d(base: LibraryBase, lvo: Long, d0: ULong, d1: ULong, d2: ULo
 pub mod library {
     #[cfg(target_arch = "m68k")]
     use super::{
-        gf_lib_call_a0, gf_lib_call_a0_a1_d0, gf_lib_call_a0_d0, APtr, LibraryBase, Long, ULong,
+        gf_lib_call_a0, gf_lib_call_a0_a1_a2_a3_d0, gf_lib_call_a0_a1_d0, gf_lib_call_a0_d0,
+        lib_call0, lib_call4, APtr, LibraryBase, Long, ULong,
     };
+
+    /// # Safety
+    /// `base` must remain open and `lvo` must name a vector with no arguments.
+    #[cfg(target_arch = "m68k")]
+    pub unsafe fn call0(base: LibraryBase, lvo: Long) -> ULong {
+        lib_call0(base, lvo)
+    }
+
+    /// # Safety
+    /// `base` must remain open, `lvo` must name a vector with exactly the
+    /// `a0,a1` signature, and both pointers must meet that vector's contract.
+    #[cfg(target_arch = "m68k")]
+    pub unsafe fn call_a0_a1(base: LibraryBase, lvo: Long, a0: APtr, a1: APtr) -> ULong {
+        lib_call4(base, lvo, 0, 0, a0, a1)
+    }
 
     /// # Safety
     /// `base` must remain open, `lvo` must name a vector with exactly the
@@ -185,6 +211,22 @@ pub mod library {
     ) -> ULong {
         gf_lib_call_a0_a1_d0(base.as_ptr(), lvo, a0, a1, d0)
     }
+
+    /// # Safety
+    /// `base` must remain open, `lvo` must name a vector with exactly the
+    /// `a0,a1,a2,a3,d0` signature, and every pointer must meet its contract.
+    #[cfg(target_arch = "m68k")]
+    pub unsafe fn call_a0_a1_a2_a3_d0(
+        base: LibraryBase,
+        lvo: Long,
+        a0: APtr,
+        a1: APtr,
+        a2: APtr,
+        a3: APtr,
+        d0: ULong,
+    ) -> ULong {
+        gf_lib_call_a0_a1_a2_a3_d0(base.as_ptr(), lvo, a0, a1, a2, a3, d0)
+    }
 }
 
 pub mod exec {
@@ -195,6 +237,10 @@ pub mod exec {
     pub const LVO_ALLOC_MEM: Long = -198;
     pub const LVO_FREE_MEM: Long = -210;
     pub const LVO_FIND_TASK: Long = -294;
+    pub const LVO_WAIT: Long = -318;
+    pub const LVO_GET_MSG: Long = -372;
+    pub const LVO_REPLY_MSG: Long = -378;
+    pub const LVO_WAIT_PORT: Long = -384;
     pub const LVO_CLOSE_LIBRARY: Long = -414;
     pub const LVO_OPEN_LIBRARY: Long = -552;
     pub const LVO_INIT_SEMAPHORE: Long = -558;
@@ -316,6 +362,26 @@ pub mod exec {
     pub unsafe fn permit(sys_base: LibraryBase) {
         lib_call0(sys_base, LVO_PERMIT);
     }
+
+    #[cfg(target_arch = "m68k")]
+    pub unsafe fn wait(sys_base: LibraryBase, signals: ULong) -> ULong {
+        lib_call3d(sys_base, LVO_WAIT, signals, 0, 0)
+    }
+
+    #[cfg(target_arch = "m68k")]
+    pub unsafe fn get_msg(sys_base: LibraryBase, port: APtr) -> APtr {
+        gf_lib_call_a0(sys_base.as_ptr(), LVO_GET_MSG, port) as usize as APtr
+    }
+
+    #[cfg(target_arch = "m68k")]
+    pub unsafe fn reply_msg(sys_base: LibraryBase, message: APtr) {
+        gf_lib_call_a1(sys_base.as_ptr(), LVO_REPLY_MSG, message);
+    }
+
+    #[cfg(target_arch = "m68k")]
+    pub unsafe fn wait_port(sys_base: LibraryBase, port: APtr) -> APtr {
+        gf_lib_call_a0(sys_base.as_ptr(), LVO_WAIT_PORT, port) as usize as APtr
+    }
 }
 
 pub mod dos {
@@ -327,6 +393,7 @@ pub mod dos {
     pub const LVO_WRITE: Long = -48;
     pub const LVO_SEEK: Long = -66;
     pub const LVO_IO_ERR: Long = -132;
+    pub const LVO_DELAY: Long = -198;
     pub const LVO_SET_IO_ERR: Long = -462;
     pub const LVO_RUN_COMMAND: Long = -504;
     pub const LVO_PUT_STR: Long = -948;
@@ -389,6 +456,11 @@ pub mod dos {
     #[cfg(target_arch = "m68k")]
     pub unsafe fn io_err(dos_base: LibraryBase) -> Long {
         call3(dos_base, LVO_IO_ERR, 0, 0, 0) as Long
+    }
+
+    #[cfg(target_arch = "m68k")]
+    pub unsafe fn delay(dos_base: LibraryBase, ticks: ULong) {
+        call3(dos_base, LVO_DELAY, ticks, 0, 0);
     }
 
     #[cfg(target_arch = "m68k")]
