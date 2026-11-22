@@ -1,0 +1,14 @@
+[package]
+name = "amiga-gfopensynth"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Safe gfopensynth.library MIDI binding for native AmigaOS 3.x Rust programs"
+repository = "https://github.com/DalsinAI/gfopenrust"
+publish = false
+
+[dependencies]
+amiga-runtime = { path = "../amiga-runtime" }
+
+[lib]
+path = "src/lib.rs"
