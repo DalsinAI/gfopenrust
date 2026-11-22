@@ -65,10 +65,10 @@ gf_openlayout_register_event_handler:
         move.l  20(%sp),%a0
         move.l  24(%sp),%a1
         moveq   #1,%d0
-        /* The callback lives in this executable's text hunk. Use a PC-relative
-         * address so the Amiga Hunk loader does not have to repair an absolute
-         * callback pointer embedded in the instruction stream. */
-        lea     gfopenlayout_event_trampoline(%pc),%a2
+        /* The callback lives in this executable's text hunk. Keep a 32-bit
+         * relocation: vlink can emit its Hunk relocation, while the 16-bit
+         * PC-relative form cannot represent distant callbacks. */
+        move.l  #gfopenlayout_event_trampoline,%a2
         move.l  28(%sp),%a3
         /* jsr -456(a6); LLVM's m68k integrated assembler does not accept
          * the indexed spelling, so encode the standard two-word form. */
